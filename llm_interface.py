@@ -1,5 +1,5 @@
 import json
-import requests
+import urllib3
 import boto3
 import logging
 from config import TAI_KEY, AWS_REGION, DB_SELECT_LAMBDA
@@ -8,6 +8,9 @@ from typing import Optional, Dict, Any
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+# Initialize urllib3 pool manager
+http = urllib3.PoolManager()
 
 url = "https://api.together.xyz/v1/chat/completions"
 
@@ -67,7 +70,7 @@ def get_template_to_use(uid: str, email_type: str) -> str:
 
 def send_message_to_llm(messages):
     """
-    Sends messages to the LLM API and returns the response.
+    Sends messages to the LLM API and returns the response using urllib3.
     """
     headers = {
         "Authorization": f"Bearer {TAI_KEY}",
@@ -88,12 +91,22 @@ def send_message_to_llm(messages):
     
     try:
         logger.info("Sending request to Together AI API")
-        response = requests.post(url, headers=headers, json=payload)
-        response_data = response.json()
+        encoded_data = json.dumps(payload).encode('utf-8')
+        response = http.request(
+            'POST',
+            url,
+            body=encoded_data,
+            headers=headers
+        )
+        
+        if response.status != 200:
+            logger.error(f"API call failed with status {response.status}: {response.data.decode('utf-8')}")
+            raise Exception(f"Failed to fetch response from Together AI API: {response.data.decode('utf-8')}")
 
-        if response.status_code != 200 or "choices" not in response_data:
-            logger.error(f"API call failed: {response_data}")
-            raise Exception("Failed to fetch response from Together AI API", response_data)
+        response_data = json.loads(response.data.decode('utf-8'))
+        if "choices" not in response_data:
+            logger.error(f"Invalid API response format: {response_data}")
+            raise Exception("Invalid response format from Together AI API")
 
         return response_data["choices"][0]["message"]["content"]
     except Exception as e:

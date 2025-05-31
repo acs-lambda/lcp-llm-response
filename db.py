@@ -10,10 +10,10 @@ logger.setLevel(logging.INFO)
 
 lambda_client = boto3.client('lambda', region_name=AWS_REGION)
 
-def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, key_value: Any) -> Optional[Dict[str, Any]]:
+def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, key_value: Any) -> Optional[List[Dict[str, Any]]]:
     """
-    Generic function to invoke the db-select Lambda.
-    Returns the parsed response or None if the invocation failed.
+    Generic function to invoke the db-select Lambda for read operations only.
+    Returns a list of items or None if the invocation failed.
     """
     try:
         payload = {
@@ -34,7 +34,9 @@ def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, 
             logger.error(f"Database Lambda failed: {response_payload}")
             return None
             
-        return json.loads(response_payload['body'])
+        result = json.loads(response_payload['body'])
+        logger.info(f"Database Lambda response: {result}")
+        return result if isinstance(result, list) else None
     except Exception as e:
         logger.error(f"Error invoking database Lambda: {str(e)}")
         return None
@@ -51,7 +53,10 @@ def get_conversation_id(message_id: str) -> Optional[str]:
         key_value=message_id
     )
     
-    return result.get('conversation_id') if result else None
+    # Handle list response
+    if isinstance(result, list) and result:
+        return result[0].get('conversation_id')
+    return None
 
 def get_associated_account(email: str) -> Optional[str]:
     """Get account ID by email."""
@@ -62,7 +67,10 @@ def get_associated_account(email: str) -> Optional[str]:
         key_value=email.lower()
     )
     
-    return result.get('id') if result else None
+    # Handle list response
+    if isinstance(result, list) and result:
+        return result[0].get('id')
+    return None
 
 def get_email_chain(conversation_id: str) -> List[Dict[str, Any]]:
     """Get email chain for a conversation."""
@@ -73,12 +81,12 @@ def get_email_chain(conversation_id: str) -> List[Dict[str, Any]]:
         key_value=conversation_id
     )
     
-    if not result or 'Items' not in result:
+    # Handle list response directly
+    if not isinstance(result, list):
         return []
         
     # Sort by timestamp and format items
-    items = result['Items']
-    sorted_items = sorted(items, key=lambda x: x.get('timestamp', ''))
+    sorted_items = sorted(result, key=lambda x: x.get('timestamp', ''))
     
     return [{
         'subject': item.get('subject', ''),
@@ -97,4 +105,7 @@ def get_account_email(account_id: str) -> Optional[str]:
         key_value=account_id
     )
     
-    return result.get('responseEmail') if result else None 
+    # Handle list response
+    if isinstance(result, list) and result:
+        return result[0].get('responseEmail')
+    return None 
