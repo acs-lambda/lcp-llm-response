@@ -2,7 +2,8 @@ import json
 import requests
 import boto3
 import logging
-from config import TAI_KEY, AWS_REGION
+from config import TAI_KEY, AWS_REGION, DB_SELECT_LAMBDA
+from typing import Optional, Dict, Any
 
 # Set up logging
 logger = logging.getLogger()
@@ -12,8 +13,57 @@ url = "https://api.together.xyz/v1/chat/completions"
 
 dynamodb = boto3.client('dynamodb', region_name=AWS_REGION)
 dynamodb_resource = boto3.resource('dynamodb', region_name=AWS_REGION)
+lambda_client = boto3.client('lambda', region_name=AWS_REGION)
 
 realtor_role = {"role": "system", "content": "You are a real estate agent. Respond as if you are trying to follow up to this potential client. This email was auto-generated and a personalized response to follow up with the user should be sent based on the contents given to you. Remember to respond as the agent and not the client. You are answering whatever questions the client asks."}
+
+def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, key_value: Any) -> Optional[Dict[str, Any]]:
+    """
+    Generic function to invoke the db-select Lambda for read operations only.
+    Returns the parsed response or None if the invocation failed.
+    """
+    try:
+        payload = {
+            'table_name': table_name,
+            'index_name': index_name,
+            'key_name': key_name,
+            'key_value': key_value
+        }
+        
+        response = lambda_client.invoke(
+            FunctionName=DB_SELECT_LAMBDA,
+            InvocationType='RequestResponse',
+            Payload=json.dumps(payload)
+        )
+        
+        response_payload = json.loads(response['Payload'].read())
+        if response_payload['statusCode'] != 200:
+            logger.error(f"Database Lambda failed: {response_payload}")
+            return None
+            
+        return json.loads(response_payload['body'])
+    except Exception as e:
+        logger.error(f"Error invoking database Lambda: {str(e)}")
+        return None
+
+def get_template_to_use(uid: str, email_type: str) -> str:
+    """Get template content using db-select."""
+    result = invoke_db_select(
+        table_name='Templates',
+        index_name=None,  # Primary key query
+        key_name='uid',
+        key_value=uid
+    )
+    
+    if not result or 'Items' not in result:
+        return ""
+        
+    # Find the first activated template of the specified type
+    for item in result['Items']:
+        if item.get('activated') and item.get('email_type') == email_type:
+            return item.get('content', '')
+            
+    return ""
 
 def send_message_to_llm(messages):
     """
@@ -49,19 +99,6 @@ def send_message_to_llm(messages):
     except Exception as e:
         logger.error(f"Error in send_message_to_llm: {str(e)}")
         raise
-
-def get_template_to_use(uid, email_type):
-    table = dynamodb_resource.Table('Templates')
-
-    response = table.query(
-        KeyConditionExpression=Key('uid').eq('user123') & Key('activated').eq(b'\x01')
-    )
-
-    if response.get('Items'):
-        for response in response['Items']:
-            if response['email_type'] == email_type:
-                return response['content']
-        return ""
 
 def format_conversation_for_llm(email_chain):
     """
