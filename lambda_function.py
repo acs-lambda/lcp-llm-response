@@ -61,6 +61,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         for field in required_fields:
             if field not in event:
                 if 'body' in event:
+                    # convert string to dict
+                    event['body'] = json.loads(event['body'])
                     if 'conversation_id' not in event['body']:
                         raise ValueError("Missing required field: conversation_id")
                     if 'account_id' not in event['body']:
