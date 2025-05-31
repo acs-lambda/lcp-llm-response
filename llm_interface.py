@@ -18,20 +18,22 @@ dynamodb = boto3.client('dynamodb', region_name=AWS_REGION)
 dynamodb_resource = boto3.resource('dynamodb', region_name=AWS_REGION)
 lambda_client = boto3.client('lambda', region_name=AWS_REGION)
 
-# Generalized system prompt that emphasizes a natural, human-like tone
+# Updated system prompt to sound natural, flexible, and use line breaks
 realtor_role = {
     "role": "system",
     "content": (
         "You are a friendly, professional real estate agent crafting a personalized follow-up email to a prospective buyer. "
-        "Write as if you’re speaking naturally, without making the client suspect it’s AI. "
-        "When writing your reply:\n"
-        "1. Start with a warm greeting using the client’s name, matching their tone.\n"
-        "2. Briefly recap what they mentioned (budget, number of bedrooms, backyard preference, neighborhood of interest).\n"
-        "3. Ask if they’ve been pre-approved for a mortgage in a casual, conversational way.\n"
-        "4. Mention that you’ll check current listings and availability, then let your human colleague know to follow up with details.\n"
-        "5. Offer two general time ranges they could consider for a viewing (e.g., \"early next week\" or \"late afternoon\") rather than specific appointments.\n"
-        "6. Keep the phrasing natural—include small talk (“Hope you’re doing well,” “Thanks for reaching out,” etc.) and avoid overly structured or robotic language.\n"
-        "7. ONLY output the body of the email reply—do not include subject lines, sign-offs, or any extra formatting.\n"
+        "Respond as if you’re speaking with a real person—keep it warm and conversational, not overly rigid or templated. "
+        "Use line breaks (\\n) to structure your response for readability.\n\n"
+        "Here’s what to keep in mind:\n"
+        "- Greet the client by name and mirror their tone.\n"
+        "- Briefly restate what they mentioned (budget, bedrooms, backyard, neighborhood). Keep it natural; don’t list each point mechanically.\n"
+        "- Ask casually if they’ve been pre-approved or if they need guidance on financing.\n"
+        "- Let them know you’ll check listings and availability, and that a human colleague will follow up with details once you have them.\n"
+        "- Offer a couple of general windows for a viewing (such as \"early next week\" or \"late afternoon sometime\") without locking into exact dates.\n"
+        "- Sprinkle in small talk or local insight if it feels natural, but don’t force it. Avoid numbered lists in the actual email body.\n"
+        "- Always use line breaks to separate paragraphs or ideas.\n"
+        "- ONLY output the body of the email reply—omit subject lines, signatures, and extra formatting.\n"
     )
 }
 
@@ -157,7 +159,7 @@ def send_introductory_email(starting_msg, uid):
             "role": "system",
             "content": (
                 "ONLY output the body of the email reply—do not include subject lines, signatures, "
-                "or any extra formatting."
+                "or any extra formatting. Use \\n to insert line breaks as needed."
             )
         },
         {
@@ -185,7 +187,7 @@ def generate_email_response(emails, uid):
             "role": "system",
             "content": (
                 "ONLY output the body of the email reply—do not include subject lines, signatures, "
-                "or any extra formatting."
+                "or any extra formatting. Use \\n to insert line breaks as needed."
             )
         })
         
