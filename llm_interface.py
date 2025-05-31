@@ -18,7 +18,22 @@ dynamodb = boto3.client('dynamodb', region_name=AWS_REGION)
 dynamodb_resource = boto3.resource('dynamodb', region_name=AWS_REGION)
 lambda_client = boto3.client('lambda', region_name=AWS_REGION)
 
-realtor_role = {"role": "system", "content": "You are a real estate agent. Respond as if you are trying to follow up to this potential client. This email was auto-generated and a personalized response to follow up with the user should be sent based on the contents given to you. Remember to respond as the agent and not the client. You are answering whatever questions the client asks."}
+# Generalized system prompt that emphasizes a natural, human-like tone
+realtor_role = {
+    "role": "system",
+    "content": (
+        "You are a friendly, professional real estate agent crafting a personalized follow-up email to a prospective buyer. "
+        "Write as if you’re speaking naturally, without making the client suspect it’s AI. "
+        "When writing your reply:\n"
+        "1. Start with a warm greeting using the client’s name, matching their tone.\n"
+        "2. Briefly recap what they mentioned (budget, number of bedrooms, backyard preference, neighborhood of interest).\n"
+        "3. Ask if they’ve been pre-approved for a mortgage in a casual, conversational way.\n"
+        "4. Mention that you’ll check current listings and availability, then let your human colleague know to follow up with details.\n"
+        "5. Offer two general time ranges they could consider for a viewing (e.g., \"early next week\" or \"late afternoon\") rather than specific appointments.\n"
+        "6. Keep the phrasing natural—include small talk (“Hope you’re doing well,” “Thanks for reaching out,” etc.) and avoid overly structured or robotic language.\n"
+        "7. ONLY output the body of the email reply—do not include subject lines, sign-offs, or any extra formatting.\n"
+    )
+}
 
 def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, key_value: Any) -> Optional[Dict[str, Any]]:
     """
@@ -53,7 +68,7 @@ def get_template_to_use(uid: str, email_type: str) -> str:
     """Get template content using db-select."""
     result = invoke_db_select(
         table_name='Templates',
-        index_name=None,  # Primary key query
+        index_name=None,
         key_name='uid',
         key_value=uid
     )
@@ -61,7 +76,6 @@ def get_template_to_use(uid: str, email_type: str) -> str:
     if not result or 'Items' not in result:
         return ""
         
-    # Find the first activated template of the specified type
     for item in result['Items']:
         if item.get('activated') and item.get('email_type') == email_type:
             return item.get('content', '')
@@ -122,10 +136,9 @@ def format_conversation_for_llm(email_chain):
     
     logger.info(f"Formatting conversation for LLM. Chain length: {len(email_chain)}")
     for i, email in enumerate(email_chain):
-        # Format each email with both subject and body
         email_content = f"Subject: {email.get('subject', '')}\n\nBody: {email.get('body', '')}"
         role = "user" if email.get('type') == 'inbound-email' else "assistant"
-        logger.info(f"Email {i+1} - Role: {role}, Subject: {email.get('subject', '')}, Body length: {len(email.get('body', ''))}")
+        logger.info(f"Email {i+1} - Role: {role}, Subject: {email.get('subject', '')}")
         
         formatted_messages.append({
             "role": role,
@@ -134,19 +147,28 @@ def format_conversation_for_llm(email_chain):
     
     return formatted_messages
 
-
 def send_introductory_email(starting_msg, uid):
-    # template = get_template_to_use(uid)
+    """
+    Sends a follow-up email when given a single starting message.
+    """
     return send_message_to_llm([
         realtor_role,
-        {"role": "system", "content": "ONLY output the body of the email reply. Do NOT include the subject, signature, closing, sender name, or any extra text. Only the main message body as you would write it in the email editor."},
-        {"role": "user", "content": "Subject: " +starting_msg['subject'] +"\n\nBody:" + starting_msg['body']}
+        {
+            "role": "system",
+            "content": (
+                "ONLY output the body of the email reply—do not include subject lines, signatures, "
+                "or any extra formatting."
+            )
+        },
+        {
+            "role": "user",
+            "content": "Subject: " + starting_msg['subject'] + "\n\nBody: " + starting_msg['body']
+        }
     ])
 
 def generate_email_response(emails, uid):
     """
-    Generates an email response based on the email chain.
-    Handles both first-time and subsequent emails consistently.
+    Generates a follow-up email response based on the provided email chain.
     """
     try:
         if not emails:
@@ -155,26 +177,22 @@ def generate_email_response(emails, uid):
 
         logger.info(f"Generating email response for chain of {len(emails)} emails")
         for i, email in enumerate(emails):
-            logger.info(f"Input email {i+1}:")
-            logger.info(f"  Subject: {email.get('subject', '')}")
-            logger.info(f"  Body: {email.get('body', '')[:100]}...")  # First 100 chars
-            logger.info(f"  Type: {email.get('type', 'unknown')}")
+            logger.info(f"Input email {i+1}: Subject: {email.get('subject', '')}")
 
-        # Format the conversation for the LLM
         formatted_messages = format_conversation_for_llm(emails)
         
-        # Add the system message for consistent formatting
         formatted_messages.append({
             "role": "system",
-            "content": "ONLY output the body of the email reply. Do NOT include the subject, signature, closing, sender name, or any extra text. Only the main message body as you would write it in the email editor."
+            "content": (
+                "ONLY output the body of the email reply—do not include subject lines, signatures, "
+                "or any extra formatting."
+            )
         })
         
-        # Get response from LLM
         response = send_message_to_llm(formatted_messages)
         logger.info(f"Generated response length: {len(response)}")
-        logger.info(f"Response preview: {response[:100]}...")  # First 100 chars
         return response
         
     except Exception as e:
         logger.error(f"Error generating email response: {str(e)}")
-        raise 
+        raise
