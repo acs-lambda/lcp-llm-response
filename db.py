@@ -76,7 +76,7 @@ def get_email_chain(conversation_id: str) -> List[Dict[str, Any]]:
     """Get email chain for a conversation."""
     result = invoke_db_select(
         table_name='Conversations',
-        index_name=None,  # Primary key query
+        index_name='conversation_id-index',
         key_name='conversation_id',
         key_value=conversation_id
     )
@@ -100,7 +100,7 @@ def get_account_email(account_id: str) -> Optional[str]:
     """Get account email by account ID."""
     result = invoke_db_select(
         table_name='Users',
-        index_name="id-index",  # Primary key query
+        index_name="id-index",
         key_name='id',
         key_value=account_id
     )
