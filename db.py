@@ -100,7 +100,7 @@ def get_account_email(account_id: str) -> Optional[str]:
     """Get account email by account ID."""
     result = invoke_db_select(
         table_name='Users',
-        index_name=None,  # Primary key query
+        index_name="id-index",  # Primary key query
         key_name='id',
         key_value=account_id
     )
