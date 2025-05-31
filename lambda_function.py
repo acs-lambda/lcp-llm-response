@@ -52,17 +52,33 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         'is_first_email': bool (optional)
     }
     """
+    conv_id = None
+    acc_id = None
     try:
         # Validate input
         required_fields = ['conversation_id', 'account_id']
         for field in required_fields:
             if field not in event:
-                raise ValueError(f"Missing required field: {field}")
-
+                if 'body' in event:
+                    if 'conversation_id' not in event['body']:
+                        raise ValueError("Missing required field: conversation_id")
+                    if 'account_id' not in event['body']:
+                        raise ValueError("Missing required field: account_id")
+                
+                    # parse conv_id and acc_id
+                    conv_id = event['body']['conversation_id']
+                    acc_id = event['body']['account_id']
+                    break
+                else:
+                    raise ValueError("Missing required field: conversation_id or account_id")
+            else:
+                conv_id = event['conversation_id']
+                acc_id = event['account_id']
+    
         # Generate response
         result = generate_response_for_conversation(
-            event['conversation_id'],
-            event['account_id'],
+            conv_id,
+            acc_id,
             event.get('is_first_email', False)
         )
 
