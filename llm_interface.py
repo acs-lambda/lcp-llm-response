@@ -3,7 +3,8 @@ import urllib3
 import boto3
 import logging
 from config import TAI_KEY, AWS_REGION, DB_SELECT_LAMBDA
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from prompts import PROMPTS
 
 # Set up logging
 logger = logging.getLogger()
@@ -18,23 +19,62 @@ dynamodb = boto3.client('dynamodb', region_name=AWS_REGION)
 dynamodb_resource = boto3.resource('dynamodb', region_name=AWS_REGION)
 lambda_client = boto3.client('lambda', region_name=AWS_REGION)
 
-# Updated system prompt to sound natural, flexible, and use line breaks
-realtor_role = {
-    "role": "system",
-    "content": (
-        "You are a friendly, professional real estate agent crafting a personalized follow-up email to a prospective buyer. "
-        "Respond as if you’re speaking with a real person—keep it warm and conversational, not overly rigid or templated. "
-        "Here’s what to keep in mind:\n"
-        "- Greet the client by name and mirror their tone.\n"
-        "- Briefly restate what they mentioned (budget, bedrooms, backyard, neighborhood). Keep it natural; don’t list each point mechanically.\n"
-        "- Ask casually if they’ve been pre-approved or if they need guidance on financing.\n"
-        "- Let them know you’ll check listings and availability, and that a human colleague will follow up with details once you have them.\n"
-        "- Offer a couple of general windows for a viewing (such as \"early next week\" or \"late afternoon sometime\") without locking into exact dates.\n"
-        "- Sprinkle in small talk or local insight if it feels natural, but don’t force it. Avoid numbered lists in the actual email body.\n"
-        "- Always use line breaks to separate paragraphs or ideas.\n"
-        "- ONLY output the body of the email reply—omit subject lines, signatures, and extra formatting.\n"
-    )
-}
+class LLMResponder:
+    def __init__(self, scenario: str):
+        if scenario not in PROMPTS:
+            # Default to continuation_email if unknown scenario
+            scenario = "continuation_email"
+            logger.warning(f"Unknown LLM scenario: {scenario}. Defaulting to 'continuation_email'.")
+        self.prompt_config = PROMPTS[scenario]
+        self.system_prompt = self.prompt_config["system"]
+        self.hyperparameters = self.prompt_config["hyperparameters"]
+
+    def format_conversation(self, email_chain: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+        messages = [
+            {"role": "system", "content": self.system_prompt}
+        ]
+        for email in email_chain:
+            email_content = f"Subject: {email.get('subject', '')}\n\nBody: {email.get('body', '')}"
+            role = "user" if email.get('type') == 'inbound-email' else "assistant"
+            messages.append({"role": role, "content": email_content})
+        return messages
+
+    def send(self, messages: List[Dict[str, str]]) -> str:
+        headers = {
+            "Authorization": f"Bearer {TAI_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+            "messages": messages,
+            **self.hyperparameters,
+            "stop": ["<|im_end|>", "<|endoftext|>"],
+            "stream": False
+        }
+        try:
+            logger.info(f"Sending request to Together AI API for scenario: {self.system_prompt[:40]}...")
+            encoded_data = json.dumps(payload).encode('utf-8')
+            response = http.request(
+                'POST',
+                url,
+                body=encoded_data,
+                headers=headers
+            )
+            if response.status != 200:
+                logger.error(f"API call failed with status {response.status}: {response.data.decode('utf-8')}")
+                raise Exception(f"Failed to fetch response from Together AI API: {response.data.decode('utf-8')}")
+            response_data = json.loads(response.data.decode('utf-8'))
+            if "choices" not in response_data:
+                logger.error(f"Invalid API response format: {response_data}")
+                raise Exception("Invalid response format from Together AI API")
+            return response_data["choices"][0]["message"]["content"]
+        except Exception as e:
+            logger.error(f"Error in send_message_to_llm: {str(e)}")
+            raise
+
+    def generate_response(self, email_chain: List[Dict[str, Any]]) -> str:
+        messages = self.format_conversation(email_chain)
+        return self.send(messages)
 
 def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, key_value: Any) -> Optional[Dict[str, Any]]:
     """
@@ -167,33 +207,76 @@ def send_introductory_email(starting_msg, uid):
         }
     ])
 
-def generate_email_response(emails, uid):
+# --- Selector LLM logic ---
+def select_scenario_with_llm(email_chain: List[Dict[str, Any]]) -> str:
     """
-    Generates a follow-up email response based on the provided email chain.
+    Uses the selector_llm prompt to classify the email chain and return a scenario keyword.
+    """
+    selector_prompt = {
+        "role": "system",
+        "content": PROMPTS["selector_llm"]["system"]
+    }
+    formatted_chain = []
+    for email in email_chain:
+        email_content = f"Subject: {email.get('subject', '')}\n\nBody: {email.get('body', '')}"
+        role = "user" if email.get('type') == 'inbound-email' else "assistant"
+        formatted_chain.append({"role": role, "content": email_content})
+    messages = [selector_prompt] + formatted_chain
+    headers = {
+        "Authorization": f"Bearer {TAI_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+        "messages": messages,
+        **PROMPTS["selector_llm"]["hyperparameters"],
+        "stop": ["<|im_end|>", "<|endoftext|>"],
+        "stream": False
+    }
+    try:
+        logger.info("Invoking selector LLM to determine scenario...")
+        encoded_data = json.dumps(payload).encode('utf-8')
+        response = http.request(
+            'POST',
+            url,
+            body=encoded_data,
+            headers=headers
+        )
+        if response.status != 200:
+            logger.error(f"Selector LLM call failed: {response.data.decode('utf-8')}")
+            raise Exception(f"Selector LLM failed: {response.data.decode('utf-8')}")
+        response_data = json.loads(response.data.decode('utf-8'))
+        if "choices" not in response_data:
+            logger.error(f"Invalid selector LLM response: {response_data}")
+            raise Exception("Invalid selector LLM response")
+        scenario = response_data["choices"][0]["message"]["content"].strip().lower()
+        logger.info(f"Selector LLM chose scenario: {scenario}")
+        if scenario not in PROMPTS or scenario == "selector_llm":
+            logger.warning(f"Selector LLM returned unknown scenario '{scenario}', defaulting to 'continuation_email'")
+            return "continuation_email"
+        return scenario
+    except Exception as e:
+        logger.error(f"Error in selector LLM: {str(e)}. Defaulting to 'continuation_email'.")
+        return "continuation_email"
+
+# --- Backwards-compatible API for lambda_function.py ---
+def generate_email_response(emails, uid, scenario=None):
+    """
+    Generates a follow-up email response based on the provided email chain and scenario.
+    If scenario is None, uses the selector LLM to determine the scenario.
     """
     try:
         if not emails:
-            logger.error("Empty email chain provided")
-            raise ValueError("Empty email chain")
-
-        logger.info(f"Generating email response for chain of {len(emails)} emails")
-        for i, email in enumerate(emails):
-            logger.info(f"Input email {i+1}: Subject: {email.get('subject', '')}")
-
-        formatted_messages = format_conversation_for_llm(emails)
-        
-        formatted_messages.append({
-            "role": "system",
-            "content": (
-                "ONLY output the body of the email reply—do not include subject lines, signatures, "
-                "or any extra formatting. Use \\n to insert line breaks as needed."
-            )
-        })
-        
-        response = send_message_to_llm(formatted_messages)
+            # Introductory email
+            scenario = "intro_email"
+            logger.info("No emails provided, using introductory email scenario")
+        elif scenario is None:
+            scenario = select_scenario_with_llm(emails)
+        logger.info(f"Generating email response for chain of {len(emails)} emails using scenario '{scenario}'")
+        responder = LLMResponder(scenario)
+        response = responder.generate_response(emails)
         logger.info(f"Generated response length: {len(response)}")
         return response
-        
     except Exception as e:
         logger.error(f"Error generating email response: {str(e)}")
         raise
