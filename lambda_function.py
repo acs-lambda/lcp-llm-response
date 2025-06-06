@@ -10,6 +10,12 @@ from db import get_email_chain
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+def process_llm_response(response: str) -> str:
+    """
+    Process the LLM response to convert \n characters to actual line breaks.
+    """
+    return response.replace('\\n', '\n')
+
 def generate_response_for_conversation(conversation_id: str, account_id: str, is_first_email: bool = False, scenario: str = "intro_email") -> Dict[str, Any]:
     """
     Generates an LLM response for a conversation.
@@ -30,8 +36,11 @@ def generate_response_for_conversation(conversation_id: str, account_id: str, is
         response = generate_email_response(chain, account_id, scenario)
         logger.info(f"Generated response for conversation {conversation_id} using scenario '{scenario}'")
 
+        # Process the response to convert \n to actual line breaks
+        processed_response = process_llm_response(response)
+
         return {
-            'response': response,
+            'response': processed_response,
             'conversation_id': conversation_id,
             'status': 'success'
         }
