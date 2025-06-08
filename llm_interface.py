@@ -6,6 +6,15 @@ from config import TAI_KEY, AWS_REGION, DB_SELECT_LAMBDA
 from typing import Optional, Dict, Any, List
 from prompts import PROMPTS
 
+from config import BEDROCK_KB_ID, BEDROCK_MODEL_ARN  # new
+
+# Initialize Bedrock retrieval+generation client
+bedrock_client = boto3.client(
+    "bedrock-agent-runtime",
+    region_name=AWS_REGION
+)
+
+
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -266,13 +275,34 @@ def generate_email_response(emails, uid, scenario=None):
     If scenario is None, uses the selector LLM to determine the scenario.
     """
     try:
+         # 1) Determine scenario (intro vs continuation/etc.)
         if not emails:
-            # Introductory email
             scenario = "intro_email"
-            logger.info("No emails provided, using introductory email scenario")
+            logger.info("No emails provided, forcing 'intro_email' scenario")
         elif scenario is None:
             scenario = select_scenario_with_llm(emails)
-        logger.info(f"Generating email response for chain of {len(emails)} emails using scenario '{scenario}'")
+        
+        #just for debugging
+        scenario = "intro_email"
+        logger.info(f"Scenario determined: '{scenario}'")
+
+        # 2) If it’s an intro email, use your specialized send_introductory_email()
+        if scenario == "intro_email":
+            logger.info("Using Bedrock RAG for intro_email")
+            starting_msg = emails[0] if emails else {"subject": "", "body": ""}
+            # Build the user-facing part
+            user_input = (
+                f"Subject: {starting_msg['subject']}\n\n"
+                f"Body: {starting_msg['body']}"
+            )
+            # RAG-generate via Bedrock
+            return rag_intro_email(
+                PROMPTS["intro_email"]["system"],
+                user_input
+            )
+
+        # 3) Otherwise, fall back to the original LLMResponder flow
+        logger.info(f"Generating email response for a '{scenario}' scenario via LLMResponder")
         responder = LLMResponder(scenario)
         response = responder.generate_response(emails)
         logger.info(f"Generated response length: {len(response)}")
@@ -280,3 +310,19 @@ def generate_email_response(emails, uid, scenario=None):
     except Exception as e:
         logger.error(f"Error generating email response: {str(e)}")
         raise
+
+def rag_intro_email(system_prompt: str, user_input: str) -> str:
+    """
+    Use Bedrock’s retrieve_and_generate API to RAG the intro_email prompt.
+    """
+    resp = bedrock_client.retrieve_and_generate(
+        input={"text": f"{system_prompt}\n\n{user_input}"},
+        retrieveAndGenerateConfiguration={
+            "type": "KNOWLEDGE_BASE",
+            "knowledgeBaseConfiguration": {
+                "knowledgeBaseId": BEDROCK_KB_ID,
+                "modelArn": BEDROCK_MODEL_ARN
+            }
+        }
+    )
+    return resp["output"]["text"].strip()
