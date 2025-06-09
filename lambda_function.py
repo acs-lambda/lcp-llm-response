@@ -56,7 +56,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     conv_id = None
     acc_id = None
     is_first = False
-    scenario = "intro_email"
+    scenario = None
     try:
         # Validate input
         required_fields = ['conversation_id', 'account_id']
