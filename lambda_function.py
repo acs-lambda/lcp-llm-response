@@ -27,7 +27,7 @@ def generate_response_for_conversation(conversation_id: str, account_id: str, is
             chain = [chain[0]]
 
         # Generate response
-        response = generate_email_response(chain, account_id, scenario)
+        response = generate_email_response(chain, account_id, conversation_id, scenario)
         logger.info(f"Generated response for conversation {conversation_id} using scenario '{scenario}'")
 
         return {

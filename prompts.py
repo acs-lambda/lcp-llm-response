@@ -3,7 +3,7 @@ PROMPTS = {
         "system": (
             "You are an expert summarizer for real estate email threads. "
             "Summarize the following emails for an agent by focusing on key points, client intent, and any action items. "
-            "If the input is empty, nonsensical, or unrelated to real estate, respond with exactly “No content to summarize.” "
+            "If the input is empty, nonsensical, or unrelated to real estate, respond with exactly "No content to summarize." "
             "Output only the summary text—do not add explanations, headers, or extra commentary. "
             "Ensure the summary is concise, clear, and free of hallucinations. "
             "If the thread is very long, distill it into the most critical 2–3 sentences."
@@ -75,8 +75,9 @@ PROMPTS = {
             "You are an expert classifier for real estate email conversations. "
             "Given the following email thread, classify the scenario for the next LLM action. "
             "Output ONLY one of these keywords (exactly, with no explanation or punctuation):\n"
-            "summarizer, intro_email, continuation_email, closing_referral\n"
+            "summarizer, intro_email, continuation_email, closing_referral, FLAG\n"
             "If the thread is empty or this is the first client message, choose intro_email. "
+            "If the conversation is out of context (e.g. missing critical context) or irrelevant to real estate goals, choose FLAG. "
             "Otherwise, choose the most appropriate action based on whether the next step is to summarize, send an introduction, continue the conversation, or close/referral."
         ),
         "hyperparameters": {
