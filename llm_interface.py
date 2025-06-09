@@ -249,7 +249,7 @@ def send_introductory_email(starting_msg, uid):
         }
     ])
 
-def update_thread_busy_status(conversation_id: str, busy_value: bool) -> bool:
+def update_thread_busy_status(conversation_id: str, busy_value: str) -> bool:
     """
     Updates the thread's busy attribute in DynamoDB.
     Returns True if successful, False otherwise.
@@ -270,7 +270,7 @@ def update_thread_busy_status(conversation_id: str, busy_value: bool) -> bool:
         logger.error(f"Error updating busy status: {str(e)}")
         return False
 
-def update_thread_flag_for_review(conversation_id: str, flag_value: bool) -> bool:
+def update_thread_flag_for_review(conversation_id: str, flag_value: str) -> bool:
     """
     Updates the thread's flag_for_review attribute in DynamoDB and sets busy to false if flagged.
     Returns True if successful, False otherwise.
@@ -280,13 +280,13 @@ def update_thread_flag_for_review(conversation_id: str, flag_value: bool) -> boo
         threads_table = dynamodb.Table('Threads')
         
         # If flagging for review, also set busy to false
-        if flag_value:
+        if flag_value == 'true':
             threads_table.update_item(
                 Key={'conversation_id': conversation_id},
                 UpdateExpression='SET flag_for_review = :flag, busy = :busy',
                 ExpressionAttributeValues={
                     ':flag': flag_value,
-                    ':busy': False
+                    ':busy': 'false'
                 }
             )
         else:
@@ -296,10 +296,54 @@ def update_thread_flag_for_review(conversation_id: str, flag_value: bool) -> boo
                 ExpressionAttributeValues={':flag': flag_value}
             )
         
-        logger.info(f"Successfully updated flag_for_review to {flag_value} and busy to {not flag_value} for conversation {conversation_id}")
+        logger.info(f"Successfully updated flag_for_review to {flag_value} and busy to {not flag_value == 'true'} for conversation {conversation_id}")
         return True
     except Exception as e:
         logger.error(f"Error updating flag_for_review and busy status: {str(e)}")
+        return False
+
+def get_thread_flag_review_override(conversation_id: str) -> Optional[str]:
+    """
+    Gets the thread's flag_review_override attribute from DynamoDB.
+    Returns None if the thread doesn't exist or there's an error.
+    """
+    try:
+        dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
+        threads_table = dynamodb.Table('Threads')
+        
+        response = threads_table.get_item(
+            Key={'conversation_id': conversation_id},
+            ProjectionExpression='flag_review_override'
+        )
+        
+        if 'Item' not in response:
+            logger.warning(f"Thread {conversation_id} not found")
+            return None
+            
+        return response['Item'].get('flag_review_override', 'false')
+    except Exception as e:
+        logger.error(f"Error getting flag_review_override: {str(e)}")
+        return None
+
+def update_thread_flag_review_override(conversation_id: str, flag_value: str) -> bool:
+    """
+    Updates the thread's flag_review_override attribute in DynamoDB.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
+        threads_table = dynamodb.Table('Threads')
+        
+        threads_table.update_item(
+            Key={'conversation_id': conversation_id},
+            UpdateExpression='SET flag_review_override = :flag',
+            ExpressionAttributeValues={':flag': flag_value}
+        )
+        
+        logger.info(f"Successfully updated flag_review_override to {flag_value} for conversation {conversation_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error updating flag_review_override: {str(e)}")
         return False
 
 def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: str) -> bool:
@@ -307,6 +351,19 @@ def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: 
     Uses the reviewer_llm to determine if a conversation needs human review.
     Returns True if the conversation should be flagged for review, False otherwise.
     """
+    # First check if review override is enabled
+    override_flag = get_thread_flag_review_override(conversation_id)
+    if override_flag is None:
+        logger.error(f"Could not get flag_review_override for conversation {conversation_id}")
+        return True  # Default to flagging for review on error
+        
+    if override_flag == 'true':
+        logger.info(f"Review override enabled for conversation {conversation_id} - skipping reviewer LLM")
+        # Turn off the override flag since we're using it
+        if not update_thread_flag_review_override(conversation_id, 'false'):
+            logger.error(f"Failed to turn off flag_review_override for conversation {conversation_id}")
+        return False  # Skip review since override is enabled
+    
     # Create a reviewer LLM instance
     reviewer = LLMResponder("reviewer_llm", None)  # No user preferences needed for review
     messages = reviewer.format_conversation(email_chain)
@@ -319,19 +376,19 @@ def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: 
         
         if decision == "FLAG":
             logger.info(f"Thread flagged for review: {conversation_id}")
-            if not update_thread_flag_for_review(conversation_id, True):
+            if not update_thread_flag_for_review(conversation_id, 'true'):
                 logger.error(f"Failed to update flag_for_review for conversation {conversation_id}")
             return True
         elif decision == "CONTINUE":
             return False
         else:
             logger.warning(f"Reviewer LLM returned unknown decision '{decision}', defaulting to FLAG")
-            if not update_thread_flag_for_review(conversation_id, True):
+            if not update_thread_flag_for_review(conversation_id, 'true'):
                 logger.error(f"Failed to update flag_for_review for conversation {conversation_id}")
             return True
     except Exception as e:
         logger.error(f"Error in reviewer LLM: {str(e)}. Defaulting to FLAG.")
-        if not update_thread_flag_for_review(conversation_id, True):
+        if not update_thread_flag_for_review(conversation_id, 'true'):
             logger.error(f"Failed to update flag_for_review for conversation {conversation_id}")
         return True
 
