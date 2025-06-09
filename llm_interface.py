@@ -5,6 +5,7 @@ import logging
 from config import TAI_KEY, AWS_REGION, DB_SELECT_LAMBDA
 from typing import Optional, Dict, Any, List
 from prompts import PROMPTS
+from db import get_user_preferences
 
 from config import BEDROCK_KB_ID, BEDROCK_MODEL_ARN  # new
 
@@ -29,14 +30,40 @@ dynamodb_resource = boto3.resource('dynamodb', region_name=AWS_REGION)
 lambda_client = boto3.client('lambda', region_name=AWS_REGION)
 
 class LLMResponder:
-    def __init__(self, scenario: str):
+    def __init__(self, scenario: str, account_id: Optional[str]):
         if scenario not in PROMPTS:
             # Default to continuation_email if unknown scenario
             scenario = "continuation_email"
             logger.warning(f"Unknown LLM scenario: {scenario}. Defaulting to 'continuation_email'.")
         self.prompt_config = PROMPTS[scenario]
-        self.system_prompt = self.prompt_config["system"]
         self.hyperparameters = self.prompt_config["hyperparameters"]
+        
+        # For selector_llm or if account_id is None, use base prompt without preferences
+        if scenario == "selector_llm" or account_id is None:
+            self.system_prompt = self.prompt_config["system"]
+        else:
+            # Get user preferences
+            user_prefs = get_user_preferences(account_id)
+            
+            # Start with base system prompt
+            self.system_prompt = self.prompt_config["system"]
+            
+            # List to collect preference instructions
+            preference_instructions = []
+            
+            # Add instructions only if preferences are not NULL
+            if user_prefs['lcp_tone'] != 'NULL':
+                preference_instructions.append(f"Write in a {user_prefs['lcp_tone']} tone")
+            
+            if user_prefs['lcp_style'] != 'NULL':
+                preference_instructions.append(f"Use a {user_prefs['lcp_style']} writing style")
+            
+            if user_prefs['lcp_sample_prompt'] != 'NULL':
+                preference_instructions.append(f"Use this writing sample as a reference for style and tone: {user_prefs['lcp_sample_prompt']}")
+            
+            # Only append preferences if we have any non-NULL ones
+            if preference_instructions:
+                self.system_prompt += "\n" + ". ".join(preference_instructions) + "."
 
     def format_conversation(self, email_chain: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         messages = [
@@ -244,44 +271,14 @@ def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id:
     Uses the selector_llm prompt to classify the email chain and return a scenario keyword.
     If FLAG is returned, updates the thread's flag_for_review attribute.
     """
-    selector_prompt = {
-        "role": "system",
-        "content": PROMPTS["selector_llm"]["system"]
-    }
-    formatted_chain = []
-    for email in email_chain:
-        email_content = f"Subject: {email.get('subject', '')}\n\nBody: {email.get('body', '')}"
-        role = "user" if email.get('type') == 'inbound-email' else "assistant"
-        formatted_chain.append({"role": role, "content": email_content})
-    messages = [selector_prompt] + formatted_chain
-    headers = {
-        "Authorization": f"Bearer {TAI_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-        "messages": messages,
-        **PROMPTS["selector_llm"]["hyperparameters"],
-        "stop": ["<|im_end|>", "<|endoftext|>"],
-        "stream": False
-    }
+    # Create a special LLMResponder instance just for selection, without user preferences
+    selector = LLMResponder("selector_llm", None)  # Pass None as account_id to skip user preferences
+    messages = selector.format_conversation(email_chain)
+    
     try:
         logger.info("Invoking selector LLM to determine scenario...")
-        encoded_data = json.dumps(payload).encode('utf-8')
-        response = http.request(
-            'POST',
-            url,
-            body=encoded_data,
-            headers=headers
-        )
-        if response.status != 200:
-            logger.error(f"Selector LLM call failed: {response.data.decode('utf-8')}")
-            raise Exception(f"Selector LLM failed: {response.data.decode('utf-8')}")
-        response_data = json.loads(response.data.decode('utf-8'))
-        if "choices" not in response_data:
-            logger.error(f"Invalid selector LLM response: {response_data}")
-            raise Exception("Invalid selector LLM response")
-        scenario = response_data["choices"][0]["message"]["content"].strip().upper()
+        response = selector.send(messages)
+        scenario = response.strip().upper()
         logger.info(f"Selector LLM chose scenario: {scenario}")
         
         # Handle FLAG response
@@ -316,7 +313,7 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None):
             scenario = select_scenario_with_llm(emails, conversation_id)
   
         logger.info(f"Generating email response for a '{scenario}' scenario via LLMResponder")
-        responder = LLMResponder(scenario)
+        responder = LLMResponder(scenario, uid)  # Pass uid to get user preferences
         response = responder.generate_response(emails)
         logger.info(f"Generated response length: {len(response)}")
         return response
