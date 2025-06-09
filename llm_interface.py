@@ -249,9 +249,9 @@ def send_introductory_email(starting_msg, uid):
         }
     ])
 
-def update_thread_flag_for_review(conversation_id: str, flag_value: bool) -> bool:
+def update_thread_busy_status(conversation_id: str, busy_value: bool) -> bool:
     """
-    Updates the thread's flag_for_review attribute in DynamoDB.
+    Updates the thread's busy attribute in DynamoDB.
     Returns True if successful, False otherwise.
     """
     try:
@@ -260,14 +260,46 @@ def update_thread_flag_for_review(conversation_id: str, flag_value: bool) -> boo
         
         threads_table.update_item(
             Key={'conversation_id': conversation_id},
-            UpdateExpression='SET flag_for_review = :flag',
-            ExpressionAttributeValues={':flag': flag_value}
+            UpdateExpression='SET busy = :busy',
+            ExpressionAttributeValues={':busy': busy_value}
         )
         
-        logger.info(f"Successfully updated flag_for_review to {flag_value} for conversation {conversation_id}")
+        logger.info(f"Successfully updated busy status to {busy_value} for conversation {conversation_id}")
         return True
     except Exception as e:
-        logger.error(f"Error updating flag_for_review: {str(e)}")
+        logger.error(f"Error updating busy status: {str(e)}")
+        return False
+
+def update_thread_flag_for_review(conversation_id: str, flag_value: bool) -> bool:
+    """
+    Updates the thread's flag_for_review attribute in DynamoDB and sets busy to false if flagged.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
+        threads_table = dynamodb.Table('Threads')
+        
+        # If flagging for review, also set busy to false
+        if flag_value:
+            threads_table.update_item(
+                Key={'conversation_id': conversation_id},
+                UpdateExpression='SET flag_for_review = :flag, busy = :busy',
+                ExpressionAttributeValues={
+                    ':flag': flag_value,
+                    ':busy': False
+                }
+            )
+        else:
+            threads_table.update_item(
+                Key={'conversation_id': conversation_id},
+                UpdateExpression='SET flag_for_review = :flag',
+                ExpressionAttributeValues={':flag': flag_value}
+            )
+        
+        logger.info(f"Successfully updated flag_for_review to {flag_value} and busy to {not flag_value} for conversation {conversation_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error updating flag_for_review and busy status: {str(e)}")
         return False
 
 def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: str) -> bool:
@@ -336,8 +368,9 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None):
         # 1) First check with reviewer LLM if conversation needs review
         if conversation_id and not scenario:
             if check_with_reviewer_llm(emails, conversation_id):
-                # If flagged for review, return a placeholder response
-                return "This conversation has been flagged for human review. A team member will respond shortly."
+                # If flagged for review, return None to prevent email sending
+                logger.info(f"Conversation {conversation_id} flagged for review - no email will be sent")
+                return None
         
         # 2) Determine scenario (intro vs continuation/etc.)
         if not emails:
