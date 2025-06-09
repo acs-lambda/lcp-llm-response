@@ -270,10 +270,42 @@ def update_thread_flag_for_review(conversation_id: str, flag_value: bool) -> boo
         logger.error(f"Error updating flag_for_review: {str(e)}")
         return False
 
+def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: str) -> bool:
+    """
+    Uses the reviewer_llm to determine if a conversation needs human review.
+    Returns True if the conversation should be flagged for review, False otherwise.
+    """
+    # Create a reviewer LLM instance
+    reviewer = LLMResponder("reviewer_llm", None)  # No user preferences needed for review
+    messages = reviewer.format_conversation(email_chain)
+    
+    try:
+        logger.info("Invoking reviewer LLM to check if conversation needs review...")
+        response = reviewer.send(messages)
+        decision = response.strip().upper()
+        logger.info(f"Reviewer LLM decision: {decision}")
+        
+        if decision == "FLAG":
+            logger.info(f"Thread flagged for review: {conversation_id}")
+            if not update_thread_flag_for_review(conversation_id, True):
+                logger.error(f"Failed to update flag_for_review for conversation {conversation_id}")
+            return True
+        elif decision == "CONTINUE":
+            return False
+        else:
+            logger.warning(f"Reviewer LLM returned unknown decision '{decision}', defaulting to FLAG")
+            if not update_thread_flag_for_review(conversation_id, True):
+                logger.error(f"Failed to update flag_for_review for conversation {conversation_id}")
+            return True
+    except Exception as e:
+        logger.error(f"Error in reviewer LLM: {str(e)}. Defaulting to FLAG.")
+        if not update_thread_flag_for_review(conversation_id, True):
+            logger.error(f"Failed to update flag_for_review for conversation {conversation_id}")
+        return True
+
 def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id: str) -> str:
     """
     Uses the selector_llm prompt to classify the email chain and return a scenario keyword.
-    If FLAG is returned, updates the thread's flag_for_review attribute.
     """
     # Create a special LLMResponder instance just for selection, without user preferences
     selector = LLMResponder("selector_llm", None)  # Pass None as account_id to skip user preferences
@@ -285,16 +317,9 @@ def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id:
         scenario = response.strip().upper()
         logger.info(f"Selector LLM chose scenario: {scenario}")
         
-        # Handle FLAG response
-        if scenario == "FLAG":
-            logger.info(f"Thread flagged for review: {conversation_id}")
-            if not update_thread_flag_for_review(conversation_id, True):
-                logger.error(f"Failed to update flag_for_review for conversation {conversation_id}")
-            return "continuation_email"  # Default to continuation_email after flagging
-        
-        # Handle other scenarios
+        # Handle scenarios
         scenario = scenario.lower()
-        if scenario not in PROMPTS or scenario == "selector_llm":
+        if scenario not in PROMPTS or scenario == "selector_llm" or scenario == "reviewer_llm":
             logger.warning(f"Selector LLM returned unknown scenario '{scenario}', defaulting to 'continuation_email'")
             return "continuation_email"
         return scenario
@@ -302,14 +327,19 @@ def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id:
         logger.error(f"Error in selector LLM: {str(e)}. Defaulting to 'continuation_email'.")
         return "continuation_email"
 
-# --- Backwards-compatible API for lambda_function.py ---
 def generate_email_response(emails, uid, conversation_id=None, scenario=None):
     """
     Generates a follow-up email response based on the provided email chain and scenario.
-    If scenario is None, uses the selector LLM to determine the scenario.
+    If scenario is None, uses the reviewer LLM first, then the selector LLM to determine the scenario.
     """
     try:
-        # 1) Determine scenario (intro vs continuation/etc.)
+        # 1) First check with reviewer LLM if conversation needs review
+        if conversation_id and not scenario:
+            if check_with_reviewer_llm(emails, conversation_id):
+                # If flagged for review, return a placeholder response
+                return "This conversation has been flagged for human review. A team member will respond shortly."
+        
+        # 2) Determine scenario (intro vs continuation/etc.)
         if not emails:
             scenario = "intro_email"
             logger.info("No emails provided, forcing 'intro_email' scenario")
