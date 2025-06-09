@@ -45,25 +45,29 @@ class LLMResponder:
             # Get user preferences
             user_prefs = get_user_preferences(account_id)
             
-            # Start with base system prompt
-            self.system_prompt = self.prompt_config["system"]
-            
             # List to collect preference instructions
             preference_instructions = []
             
             # Add instructions only if preferences are not NULL
             if user_prefs['lcp_tone'] != 'NULL':
-                preference_instructions.append(f"Write in a {user_prefs['lcp_tone']} tone")
+                preference_instructions.append(f"IMPORTANT: You MUST write in a {user_prefs['lcp_tone']} tone throughout the entire response")
             
             if user_prefs['lcp_style'] != 'NULL':
-                preference_instructions.append(f"Use a {user_prefs['lcp_style']} writing style")
+                preference_instructions.append(f"IMPORTANT: You MUST use a {user_prefs['lcp_style']} writing style for all content")
             
             if user_prefs['lcp_sample_prompt'] != 'NULL':
-                preference_instructions.append(f"Use this writing sample as a reference for style and tone: {user_prefs['lcp_sample_prompt']}")
+                preference_instructions.append(f"IMPORTANT: You MUST closely match the style and tone of this writing sample: {user_prefs['lcp_sample_prompt']}")
             
-            # Only append preferences if we have any non-NULL ones
+            # Construct the final system prompt
             if preference_instructions:
-                self.system_prompt += "\n" + ". ".join(preference_instructions) + "."
+                # Start with a strong emphasis on following preferences
+                self.system_prompt = "IMPORTANT WRITING PREFERENCES - FOLLOW THESE STRICTLY:\n" + "\n".join(preference_instructions)
+                # Add a separator
+                self.system_prompt += "\n\n---\n\n"
+                # Add the base prompt
+                self.system_prompt += self.prompt_config["system"]
+            else:
+                self.system_prompt = self.prompt_config["system"]
 
     def format_conversation(self, email_chain: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         messages = [
