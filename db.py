@@ -123,12 +123,12 @@ def get_user_preferences(account_id: str) -> Dict[str, str]:
     if isinstance(result, list) and result:
         user = result[0]
         return {
-            'lcp_tone': user.get('lcp_tone', 'professional'),  # Default to professional if not set
-            'lcp_style': user.get('lcp_style', 'concise'),     # Default to concise if not set
-            'lcp_sample_prompt': user.get('lcp_sample_prompt', '')  # Empty string if not set
+            'lcp_tone': user.get('lcp_tone', 'NULL'),
+            'lcp_style': user.get('lcp_style', 'NULL'),
+            'lcp_sample_prompt': user.get('lcp_sample_prompt', 'NULL')
         }
     return {
-        'lcp_tone': 'professional',
-        'lcp_style': 'concise',
-        'lcp_sample_prompt': ''
+        'lcp_tone': 'NULL',
+        'lcp_style': 'NULL',
+        'lcp_sample_prompt': 'NULL'
     } 

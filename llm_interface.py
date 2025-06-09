@@ -45,17 +45,25 @@ class LLMResponder:
             # Get user preferences
             user_prefs = get_user_preferences(account_id)
             
-            # Enhance system prompt with user preferences
-            base_system_prompt = self.prompt_config["system"]
-            tone_instruction = f"Write in a {user_prefs['lcp_tone']} tone"
-            style_instruction = f"Use a {user_prefs['lcp_style']} writing style"
+            # Start with base system prompt
+            self.system_prompt = self.prompt_config["system"]
             
-            # Add sample prompt reference if available
-            sample_prompt = user_prefs['lcp_sample_prompt']
-            sample_instruction = f"\nUse this writing sample as a reference for style and tone: {sample_prompt}" if sample_prompt else ""
+            # List to collect preference instructions
+            preference_instructions = []
             
-            # Combine all instructions
-            self.system_prompt = f"{base_system_prompt}\n{tone_instruction}. {style_instruction}.{sample_instruction}"
+            # Add instructions only if preferences are not NULL
+            if user_prefs['lcp_tone'] != 'NULL':
+                preference_instructions.append(f"Write in a {user_prefs['lcp_tone']} tone")
+            
+            if user_prefs['lcp_style'] != 'NULL':
+                preference_instructions.append(f"Use a {user_prefs['lcp_style']} writing style")
+            
+            if user_prefs['lcp_sample_prompt'] != 'NULL':
+                preference_instructions.append(f"Use this writing sample as a reference for style and tone: {user_prefs['lcp_sample_prompt']}")
+            
+            # Only append preferences if we have any non-NULL ones
+            if preference_instructions:
+                self.system_prompt += "\n" + ". ".join(preference_instructions) + "."
 
     def format_conversation(self, email_chain: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         messages = [
