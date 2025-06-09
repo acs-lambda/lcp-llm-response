@@ -30,6 +30,15 @@ def generate_response_for_conversation(conversation_id: str, account_id: str, is
         response = generate_email_response(chain, account_id, conversation_id, scenario)
         logger.info(f"Generated response for conversation {conversation_id} using scenario '{scenario}'")
 
+        # If response is None, it means the conversation was flagged for review
+        if response is None:
+            return {
+                'response': None,
+                'conversation_id': conversation_id,
+                'status': 'flagged_for_review',
+                'message': 'Conversation flagged for human review - no email will be sent'
+            }
+
         return {
             'response': response,
             'conversation_id': conversation_id,
