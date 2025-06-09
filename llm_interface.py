@@ -76,7 +76,8 @@ class LLMResponder:
             if "choices" not in response_data:
                 logger.error(f"Invalid API response format: {response_data}")
                 raise Exception("Invalid response format from Together AI API")
-            return response_data["choices"][0]["message"]["content"]
+            content = response_data["choices"][0]["message"]["content"]
+            return content.replace('\\n', '\n')
         except Exception as e:
             logger.error(f"Error in send_message_to_llm: {str(e)}")
             raise
@@ -172,7 +173,8 @@ def send_message_to_llm(messages):
             logger.error(f"Invalid API response format: {response_data}")
             raise Exception("Invalid response format from Together AI API")
 
-        return response_data["choices"][0]["message"]["content"]
+        content = response_data["choices"][0]["message"]["content"]
+        return content.replace('\\n', '\n')
     except Exception as e:
         logger.error(f"Error in send_message_to_llm: {str(e)}")
         raise
