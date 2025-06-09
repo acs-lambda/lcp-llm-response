@@ -216,10 +216,31 @@ def send_introductory_email(starting_msg, uid):
         }
     ])
 
-# --- Selector LLM logic ---
-def select_scenario_with_llm(email_chain: List[Dict[str, Any]]) -> str:
+def update_thread_flag_for_review(conversation_id: str, flag_value: bool) -> bool:
+    """
+    Updates the thread's flag_for_review attribute in DynamoDB.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
+        threads_table = dynamodb.Table('Threads')
+        
+        threads_table.update_item(
+            Key={'conversation_id': conversation_id},
+            UpdateExpression='SET flag_for_review = :flag',
+            ExpressionAttributeValues={':flag': flag_value}
+        )
+        
+        logger.info(f"Successfully updated flag_for_review to {flag_value} for conversation {conversation_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error updating flag_for_review: {str(e)}")
+        return False
+
+def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id: str) -> str:
     """
     Uses the selector_llm prompt to classify the email chain and return a scenario keyword.
+    If FLAG is returned, updates the thread's flag_for_review attribute.
     """
     selector_prompt = {
         "role": "system",
@@ -258,8 +279,18 @@ def select_scenario_with_llm(email_chain: List[Dict[str, Any]]) -> str:
         if "choices" not in response_data:
             logger.error(f"Invalid selector LLM response: {response_data}")
             raise Exception("Invalid selector LLM response")
-        scenario = response_data["choices"][0]["message"]["content"].strip().lower()
+        scenario = response_data["choices"][0]["message"]["content"].strip().upper()
         logger.info(f"Selector LLM chose scenario: {scenario}")
+        
+        # Handle FLAG response
+        if scenario == "FLAG":
+            logger.info(f"Thread flagged for review: {conversation_id}")
+            if not update_thread_flag_for_review(conversation_id, True):
+                logger.error(f"Failed to update flag_for_review for conversation {conversation_id}")
+            return "continuation_email"  # Default to continuation_email after flagging
+        
+        # Handle other scenarios
+        scenario = scenario.lower()
         if scenario not in PROMPTS or scenario == "selector_llm":
             logger.warning(f"Selector LLM returned unknown scenario '{scenario}', defaulting to 'continuation_email'")
             return "continuation_email"
@@ -269,39 +300,19 @@ def select_scenario_with_llm(email_chain: List[Dict[str, Any]]) -> str:
         return "continuation_email"
 
 # --- Backwards-compatible API for lambda_function.py ---
-def generate_email_response(emails, uid, scenario=None):
+def generate_email_response(emails, uid, conversation_id=None, scenario=None):
     """
     Generates a follow-up email response based on the provided email chain and scenario.
     If scenario is None, uses the selector LLM to determine the scenario.
     """
     try:
-         # 1) Determine scenario (intro vs continuation/etc.)
+        # 1) Determine scenario (intro vs continuation/etc.)
         if not emails:
             scenario = "intro_email"
             logger.info("No emails provided, forcing 'intro_email' scenario")
         elif scenario is None:
-            scenario = select_scenario_with_llm(emails)
-        
-        #just for debugging
-        scenario = "intro_email"
-        logger.info(f"Scenario determined: '{scenario}'")
-
-        # 2) If it’s an intro email, use your specialized send_introductory_email()
-        if scenario == "intro_email":
-            logger.info("Using Bedrock RAG for intro_email")
-            starting_msg = emails[0] if emails else {"subject": "", "body": ""}
-            # Build the user-facing part
-            user_input = (
-                f"Subject: {starting_msg['subject']}\n\n"
-                f"Body: {starting_msg['body']}"
-            )
-            # RAG-generate via Bedrock
-            return rag_intro_email(
-                PROMPTS["intro_email"]["system"],
-                user_input
-            )
-
-        # 3) Otherwise, fall back to the original LLMResponder flow
+            scenario = select_scenario_with_llm(emails, conversation_id)
+  
         logger.info(f"Generating email response for a '{scenario}' scenario via LLMResponder")
         responder = LLMResponder(scenario)
         response = responder.generate_response(emails)
@@ -310,19 +321,3 @@ def generate_email_response(emails, uid, scenario=None):
     except Exception as e:
         logger.error(f"Error generating email response: {str(e)}")
         raise
-
-def rag_intro_email(system_prompt: str, user_input: str) -> str:
-    """
-    Use Bedrock’s retrieve_and_generate API to RAG the intro_email prompt.
-    """
-    resp = bedrock_client.retrieve_and_generate(
-        input={"text": f"{system_prompt}\n\n{user_input}"},
-        retrieveAndGenerateConfiguration={
-            "type": "KNOWLEDGE_BASE",
-            "knowledgeBaseConfiguration": {
-                "knowledgeBaseId": BEDROCK_KB_ID,
-                "modelArn": BEDROCK_MODEL_ARN
-            }
-        }
-    )
-    return resp["output"]["text"].strip()
