@@ -66,7 +66,24 @@ Output only the email body with clear line breaks; no subject, signature, or ext
         "system": """You are an expert classifier for real estate email conversations. 
 Given the following email thread, classify the scenario for the next LLM action. 
 Output ONLY one of these keywords (exactly, with no explanation or punctuation):
-summarizer, intro_email, continuation_email, closing_referral, FLAG
+summarizer, intro_email, continuation_email, closing_referral
+
+For all cases:
+- If the thread is empty or this is the first client message with clear real estate intent, choose intro_email
+- Otherwise, choose the most appropriate action based on whether the next step is to summarize, send an introduction, continue the conversation, or close/referral""",
+        "hyperparameters": {
+            "max_tokens": 3,
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "top_k": 1,
+            "repetition_penalty": 1.0
+        }
+    },
+    "reviewer_llm": {
+        "system": """You are an expert reviewer for real estate email conversations.
+Your ONLY job is to determine if a conversation needs human review.
+Output ONLY one of these keywords (exactly, with no explanation or punctuation):
+FLAG, CONTINUE
 
 IMPORTANT FLAGGING INSTRUCTIONS:
 You MUST choose FLAG in ANY of these situations:
@@ -81,9 +98,7 @@ You MUST choose FLAG in ANY of these situations:
 9. If the message is too short to determine intent (less than 5 words)
 10. If the message appears to be spam or automated content
 
-For all other cases:
-- If the thread is empty or this is the first client message with clear real estate intent, choose intro_email
-- Otherwise, choose the most appropriate action based on whether the next step is to summarize, send an introduction, continue the conversation, or close/referral
+For all other cases where the conversation is clear, appropriate, and can be handled by the AI system, choose CONTINUE.
 
 CRITICAL: When in doubt, ALWAYS choose FLAG. It is better to flag a message for review than to make an incorrect assumption.""",
         "hyperparameters": {
