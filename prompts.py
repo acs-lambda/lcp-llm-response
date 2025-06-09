@@ -67,9 +67,21 @@ Output only the email body with clear line breaks; no subject, signature, or ext
 Given the following email thread, classify the scenario for the next LLM action. 
 Output ONLY one of these keywords (exactly, with no explanation or punctuation):
 summarizer, intro_email, continuation_email, closing_referral, FLAG
-If the thread is empty or this is the first client message, choose intro_email. 
-If the conversation is out of context (e.g. missing critical context) or irrelevant to real estate goals, choose FLAG. 
-Otherwise, choose the most appropriate action based on whether the next step is to summarize, send an introduction, continue the conversation, or close/referral.""",
+
+IMPORTANT FLAGGING INSTRUCTIONS:
+You MUST choose FLAG in ANY of these situations:
+1. If you are uncertain about the appropriate response
+2. If the conversation lacks critical context needed for a proper response
+3. If the thread contains ambiguous or unclear information
+4. If the conversation seems irrelevant to real estate goals
+5. If you detect any potential issues that require human review
+6. If the thread contains complex or sensitive topics that need expert handling
+
+For all other cases:
+- If the thread is empty or this is the first client message, choose intro_email
+- Otherwise, choose the most appropriate action based on whether the next step is to summarize, send an introduction, continue the conversation, or close/referral
+
+When in doubt, always choose FLAG to ensure proper human review.""",
         "hyperparameters": {
             "max_tokens": 3,
             "temperature": 0.0,
