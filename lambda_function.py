@@ -10,7 +10,7 @@ from db import get_email_chain
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-def generate_response_for_conversation(conversation_id: str, account_id: str, is_first_email: bool = False, scenario: str = "intro_email") -> Dict[str, Any]:
+def generate_response_for_conversation(conversation_id: str, account_id: str, is_first_email: bool = False, scenario: str = None) -> Dict[str, Any]:
     """
     Generates an LLM response for a conversation.
     Returns the generated response and status.
@@ -56,7 +56,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     conv_id = None
     acc_id = None
     is_first = False
-    scenario = "intro_email"
+    scenario = None
     try:
         # Validate input
         required_fields = ['conversation_id', 'account_id']
