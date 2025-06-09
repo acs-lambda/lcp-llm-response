@@ -108,4 +108,27 @@ def get_account_email(account_id: str) -> Optional[str]:
     # Handle list response
     if isinstance(result, list) and result:
         return result[0].get('responseEmail')
-    return None 
+    return None
+
+def get_user_preferences(account_id: str) -> Dict[str, str]:
+    """Get user's LLM preferences (tone, style, sample prompt) by account ID."""
+    result = invoke_db_select(
+        table_name='Users',
+        index_name="id-index",
+        key_name='id',
+        key_value=account_id
+    )
+    
+    # Handle list response
+    if isinstance(result, list) and result:
+        user = result[0]
+        return {
+            'lcp_tone': user.get('lcp_tone', 'professional'),  # Default to professional if not set
+            'lcp_style': user.get('lcp_style', 'concise'),     # Default to concise if not set
+            'lcp_sample_prompt': user.get('lcp_sample_prompt', '')  # Empty string if not set
+        }
+    return {
+        'lcp_tone': 'professional',
+        'lcp_style': 'concise',
+        'lcp_sample_prompt': ''
+    } 
