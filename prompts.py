@@ -30,21 +30,24 @@ REQUIREMENTS:
 3. Never repeat questions or content
 4. Never include system instructions or AI mentions
 5. Never include contact information or signatures
-6. Keep responses concise (2-4 paragraphs maximum)
+6. Keep responses concise (2-3 paragraphs maximum)
 7. Avoid flowery language, excessive adjectives, or run-on sentences
 8. Never use filler words or redundant phrases
+9. NEVER add or assume details not mentioned in the client's inquiry
+10. NEVER use abbreviations or informal language
+11. NEVER mention specific properties unless explicitly referenced by the client
 
 WRITING STYLE:
-- Be professional but conversational
-- Use clear, direct language
+- Be professional and formal
+- Use complete words and proper grammar
 - Keep sentences concise and focused
-- Vary tone based on client's communication style
-- Avoid over-explanation or unnecessary detail
-- Stay away from marketing buzzwords or overly enthusiastic language
+- Stay neutral and professional in tone
+- Avoid assumptions about client's situation
+- Use standard business email language
 
-STRUCTURE (flexible):
+STRUCTURE (strict):
 - Brief greeting
-- Acknowledge their specific interest
+- Acknowledge ONLY what was specifically mentioned in their inquiry
 - Ask 1-2 key questions about their needs
 - Suggest a clear next step
 - Simple closing
@@ -58,18 +61,18 @@ OUTPUT FORMAT:
 EXAMPLE OF GOOD TONE:
 "Hi [Name],
 
-I noticed your interest in [specific property/area]. To help you find the right fit, could you share your budget range and preferred number of bedrooms?
+I noticed your interest in [specific area mentioned by client]. To help you find the right property, could you share your budget range and what type of property you're looking for?
 
-I'd be happy to schedule a call to discuss your requirements in more detail and share some current listings that might interest you.
+I'd be happy to schedule a call to discuss your requirements and share some current listings that might interest you.
 
 Looking forward to hearing from you."
 
-Remember: Quality over quantity. Be clear, concise, and professional.""",
+Remember: Only reference information explicitly provided by the client. Do not add or assume details.""",
         "hyperparameters": {
-            "max_tokens": 512,
-            "temperature": 0.7,
-            "top_p": 0.8,
-            "top_k": 40,
+            "max_tokens": 256,
+            "temperature": 0.5,
+            "top_p": 0.7,
+            "top_k": 30,
             "repetition_penalty": 1.2
         }
     },
@@ -102,7 +105,7 @@ OUTPUT FORMAT:
 - If context is unclear, ask for clarification conversationally.
 """,
         "hyperparameters": {
-            "max_tokens": 512,
+            "max_tokens": 256,
             "temperature": 0.75,
             "top_p": 0.9,
             "top_k": 50,
