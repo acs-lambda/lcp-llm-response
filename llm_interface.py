@@ -2,19 +2,10 @@ import json
 import urllib3
 import boto3
 import logging
-from config import TAI_KEY, AWS_REGION, DB_SELECT_LAMBDA
+from config import TAI_KEY, AWS_REGION
 from typing import Optional, Dict, Any, List
 from prompts import PROMPTS
 from db import get_user_preferences
-
-from config import BEDROCK_KB_ID, BEDROCK_MODEL_ARN  # new
-
-# Initialize Bedrock retrieval+generation client
-bedrock_client = boto3.client(
-    "bedrock-agent-runtime",
-    region_name=AWS_REGION
-)
-
 
 # Set up logging
 logger = logging.getLogger()
@@ -25,21 +16,20 @@ http = urllib3.PoolManager()
 
 url = "https://api.together.xyz/v1/chat/completions"
 
-dynamodb = boto3.client('dynamodb', region_name=AWS_REGION)
-dynamodb_resource = boto3.resource('dynamodb', region_name=AWS_REGION)
-lambda_client = boto3.client('lambda', region_name=AWS_REGION)
-
 class LLMResponder:
     def __init__(self, scenario: str, account_id: Optional[str]):
+        original_scenario = scenario
         if scenario not in PROMPTS:
             # Default to continuation_email if unknown scenario
+            logger.warning(f"Unknown LLM scenario: '{original_scenario}'. Defaulting to 'continuation_email'.")
             scenario = "continuation_email"
-            logger.warning(f"Unknown LLM scenario: {scenario}. Defaulting to 'continuation_email'.")
+        
+        logger.info(f"LLMResponder initialized with scenario: '{scenario}' for account_id: {account_id}")
         self.prompt_config = PROMPTS[scenario]
         self.hyperparameters = self.prompt_config["hyperparameters"]
         
         # For selector_llm or if account_id is None, use base prompt without preferences
-        if scenario == "selector_llm" or account_id is None:
+        if scenario == "selector_llm" or account_id is None or scenario == "reviewer_llm":
             self.system_prompt = self.prompt_config["system"]
         else:
             # Get user preferences
@@ -92,7 +82,14 @@ class LLMResponder:
             "stream": False
         }
         try:
-            logger.info(f"Sending request to Together AI API for scenario: {self.system_prompt[:40]}...")
+            # Extract scenario from prompt config for better logging
+            scenario_name = None
+            for name, config in PROMPTS.items():
+                if config == self.prompt_config:
+                    scenario_name = name
+                    break
+            
+            logger.info(f"Sending request to Together AI API for scenario: '{scenario_name}' with {len(messages)} messages")
             encoded_data = json.dumps(payload).encode('utf-8')
             response = http.request(
                 'POST',
@@ -117,105 +114,18 @@ class LLMResponder:
         messages = self.format_conversation(email_chain)
         return self.send(messages)
 
-def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, key_value: Any) -> Optional[Dict[str, Any]]:
-    """
-    Generic function to invoke the db-select Lambda for read operations only.
-    Returns the parsed response or None if the invocation failed.
-    """
-    try:
-        payload = {
-            'table_name': table_name,
-            'index_name': index_name,
-            'key_name': key_name,
-            'key_value': key_value
-        }
-        
-        response = lambda_client.invoke(
-            FunctionName=DB_SELECT_LAMBDA,
-            InvocationType='RequestResponse',
-            Payload=json.dumps(payload)
-        )
-        
-        response_payload = json.loads(response['Payload'].read())
-        if response_payload['statusCode'] != 200:
-            logger.error(f"Database Lambda failed: {response_payload}")
-            return None
-            
-        return json.loads(response_payload['body'])
-    except Exception as e:
-        logger.error(f"Error invoking database Lambda: {str(e)}")
-        return None
 
-def get_template_to_use(uid: str, email_type: str) -> str:
-    """Get template content using db-select."""
-    result = invoke_db_select(
-        table_name='Templates',
-        index_name=None,
-        key_name='uid',
-        key_value=uid
-    )
-    
-    if not result or 'Items' not in result:
-        return ""
-        
-    for item in result['Items']:
-        if item.get('activated') and item.get('email_type') == email_type:
-            return item.get('content', '')
-            
-    return ""
 
-def send_message_to_llm(messages):
-    """
-    Sends messages to the LLM API and returns the response using urllib3.
-    """
-    headers = {
-        "Authorization": f"Bearer {TAI_KEY}",
-        "Content-Type": "application/json"
-    }
 
-    payload = {
-        "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-        "messages": messages,
-        "max_tokens": 512,
-        "temperature": 0.7,
-        "top_p": 0.7,
-        "top_k": 50,
-        "repetition_penalty": 1,
-        "stop": ["<|im_end|>", "<|endoftext|>"],
-        "stream": False
-    }
-    
-    try:
-        logger.info("Sending request to Together AI API")
-        encoded_data = json.dumps(payload).encode('utf-8')
-        response = http.request(
-            'POST',
-            url,
-            body=encoded_data,
-            headers=headers
-        )
-        
-        if response.status != 200:
-            logger.error(f"API call failed with status {response.status}: {response.data.decode('utf-8')}")
-            raise Exception(f"Failed to fetch response from Together AI API: {response.data.decode('utf-8')}")
 
-        response_data = json.loads(response.data.decode('utf-8'))
-        if "choices" not in response_data:
-            logger.error(f"Invalid API response format: {response_data}")
-            raise Exception("Invalid response format from Together AI API")
 
-        content = response_data["choices"][0]["message"]["content"]
-        return content.replace('\\n', '\n')
-    except Exception as e:
-        logger.error(f"Error in send_message_to_llm: {str(e)}")
-        raise
 
 def format_conversation_for_llm(email_chain):
     """
     Formats the email chain to be compatible with the LLM input structure.
     Includes both subject and body for each email.
     """
-    formatted_messages = [realtor_role]
+    formatted_messages = [{"role": "system", "content": PROMPTS["intro_email"]["system"]}]
     
     logger.info(f"Formatting conversation for LLM. Chain length: {len(email_chain)}")
     for i, email in enumerate(email_chain):
@@ -230,24 +140,7 @@ def format_conversation_for_llm(email_chain):
     
     return formatted_messages
 
-def send_introductory_email(starting_msg, uid):
-    """
-    Sends a follow-up email when given a single starting message.
-    """
-    return send_message_to_llm([
-        realtor_role,
-        {
-            "role": "system",
-            "content": (
-                "ONLY output the body of the email reply—do not include subject lines, signatures, "
-                "or any extra formatting. Use \\n to insert line breaks as needed."
-            )
-        },
-        {
-            "role": "user",
-            "content": "Subject: " + starting_msg['subject'] + "\n\nBody: " + starting_msg['body']
-        }
-    ])
+
 
 def update_thread_busy_status(conversation_id: str, busy_value: str) -> bool:
     """
@@ -403,15 +296,21 @@ def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id:
     try:
         logger.info("Invoking selector LLM to determine scenario...")
         response = selector.send(messages)
-        scenario = response.strip().upper()
-        logger.info(f"Selector LLM chose scenario: {scenario}")
+        raw_scenario = response.strip()
+        logger.info(f"Selector LLM raw response: '{raw_scenario}'")
         
-        # Handle scenarios
-        scenario = scenario.lower()
-        if scenario not in PROMPTS or scenario == "selector_llm" or scenario == "reviewer_llm":
-            logger.warning(f"Selector LLM returned unknown scenario '{scenario}', defaulting to 'continuation_email'")
+        # Handle scenarios - convert to lowercase for consistency
+        scenario = raw_scenario.lower()
+        logger.info(f"Normalized scenario: '{scenario}'")
+        
+        # Validate the scenario is one of the expected email generation scenarios
+        valid_scenarios = ["summarizer", "intro_email", "continuation_email", "closing_referral"]
+        if scenario in valid_scenarios:
+            logger.info(f"Selector LLM chose valid scenario: '{scenario}'")
+            return scenario
+        else:
+            logger.warning(f"Selector LLM returned invalid scenario '{scenario}', defaulting to 'continuation_email'")
             return "continuation_email"
-        return scenario
     except Exception as e:
         logger.error(f"Error in selector LLM: {str(e)}. Defaulting to 'continuation_email'.")
         return "continuation_email"
@@ -422,8 +321,12 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None):
     If scenario is None, uses the reviewer LLM first, then the selector LLM to determine the scenario.
     """
     try:
-        # 1) First check with reviewer LLM if conversation needs review
-        if conversation_id and not scenario:
+        logger.info(f"Starting email generation for conversation_id: {conversation_id}, uid: {uid}")
+        logger.info(f"Initial scenario provided: {scenario}")
+        
+        # 1) First check with reviewer LLM if conversation needs review (only if no scenario is forced)
+        if conversation_id and scenario is None:
+            logger.info("No scenario provided - checking with reviewer LLM first...")
             if check_with_reviewer_llm(emails, conversation_id):
                 # If flagged for review, return None to prevent email sending
                 logger.info(f"Conversation {conversation_id} flagged for review - no email will be sent")
@@ -434,12 +337,20 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None):
             scenario = "intro_email"
             logger.info("No emails provided, forcing 'intro_email' scenario")
         elif scenario is None:
+            logger.info("No scenario provided - using selector LLM to determine scenario...")
             scenario = select_scenario_with_llm(emails, conversation_id)
+            logger.info(f"Selector LLM determined scenario: '{scenario}'")
+        else:
+            logger.info(f"Using provided scenario: '{scenario}'")
   
-        logger.info(f"Generating email response for a '{scenario}' scenario via LLMResponder")
+        # 3) Generate response using the determined scenario
+        logger.info(f"Creating LLMResponder for scenario: '{scenario}'")
         responder = LLMResponder(scenario, uid)  # Pass uid to get user preferences
+        
+        logger.info(f"Generating email response using '{scenario}' scenario...")
         response = responder.generate_response(emails)
-        logger.info(f"Generated response length: {len(response)}")
+        logger.info(f"Successfully generated response for scenario '{scenario}' - length: {len(response)}")
+        
         return response
     except Exception as e:
         logger.error(f"Error generating email response: {str(e)}")
