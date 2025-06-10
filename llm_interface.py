@@ -252,9 +252,6 @@ def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: 
         
     if override_flag == 'true':
         logger.info(f"Review override enabled for conversation {conversation_id} - skipping reviewer LLM")
-        # Turn off the override flag since we're using it
-        if not update_thread_flag_review_override(conversation_id, 'false'):
-            logger.error(f"Failed to turn off flag_review_override for conversation {conversation_id}")
         return False  # Skip review since override is enabled
     
     # Create a reviewer LLM instance
