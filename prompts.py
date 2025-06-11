@@ -11,6 +11,7 @@ MODEL_MAPPING = {
     "summarizer": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
     "intro_email": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", 
     "continuation_email": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
+    "follow_up": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
     "closing_referral": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
     "selector_llm": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",  # Fast classification task
     "reviewer_llm": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"   # Fast review task
@@ -237,6 +238,28 @@ Thanks for sharing those details! It sounds like you're looking for something sp
 
             "hyperparameters": {
                 "max_tokens": 150,
+                "temperature": 0.3,
+                "top_p": 0.8,
+                "top_k": 50,
+                "repetition_penalty": 1.0
+            }
+        },
+
+        "follow_up": {
+            "system": f"""You are a realtor following up on a previous email you sent. {realtor_bio}Write a follow-up email{tone}{style}{sample_instruction}.
+
+Since you sent the last email and haven't heard back, write a friendly, non-pushy follow-up to re-engage the conversation. Reference your previous message naturally and provide additional value or ask if they need clarification.
+
+Keep it brief and helpful - maybe share a relevant market insight, ask if their timeline has changed, or offer to answer any questions they might have.
+
+Do NOT be overly persistent or pushy. Maintain a helpful, professional tone that shows you're available when they're ready.
+Do NOT include email signatures, formal closings, or sign-offs like "Best regards," "Sincerely," or "[Your Name]". Do include some intro like "Hi [Name],"
+
+Example:
+Hi Sarah, I wanted to follow up on my last email about your home search in the downtown area. I know you mentioned you were still in the early stages of looking. Have you had a chance to think more about your timeline, or do you have any questions about the current market conditions? I'm here to help whenever you're ready to take the next step.""",
+
+            "hyperparameters": {
+                "max_tokens": 120,
                 "temperature": 0.3,
                 "top_p": 0.8,
                 "top_k": 50,
