@@ -134,47 +134,29 @@ def get_prompts(account_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
         },
 
         "intro_email": {
-            "system": f"""You are a professional realtor writing a single, complete introductory email{tone}{style}{sample_instruction}.
+            "system": f"""Write a professional realtor introductory email{tone}{style}{sample_instruction}. Output only the email body text - no commentary, no explanations, no multiple versions.
 
-ABSOLUTE REQUIREMENTS:
-– Write ONLY the email content itself - nothing else
-– NO explanations, comments, or meta-text about the email
-– NO multiple versions or rewrites
-– NO system commentary whatsoever
-– Complete the email in exactly one attempt
+Email must include:
+- Greeting with name
+- Market insight sentence  
+- Property/location questions
+- Timeline/financing questions
+- Next step offer
+- Closing line
 
-REQUIRED EMAIL FORMAT:
-Hello [Name],
+Format:
+Hello [Name], [excitement about helping]. [Market insight]. [Property/location questions]. [Timeline/financing questions]. [Specific next step offer]. [Closing line].
 
-[One sentence expressing excitement about helping them buy a home]
+Example: "Hello John, I'm excited to help you find your perfect home! The current market offers excellent opportunities for buyers. What type of property interests you most, and which neighborhoods are you considering? What's your timeline for purchasing, and have you been pre-approved for financing? I'd be happy to provide a comprehensive market analysis for your preferred areas. I look forward to hearing from you soon."
 
-[One sentence about current market conditions or your local expertise]
-
-[Ask about property type and preferred location in one paragraph]
-
-[Ask about timeline and financing in a separate paragraph]
-
-[Offer one specific next step like market analysis or consultation]
-
-[Single closing line inviting their response]
-
-EXAMPLE STRUCTURE:
-"Hello [Name], I'm excited to help you find your perfect home! The current market is showing great opportunities for buyers in [area]. To get started, I'd love to know what type of property you're looking for and which neighborhoods interest you most. Additionally, what's your timeline for purchasing, and have you been pre-approved for financing? I'd be happy to provide you with a comprehensive market analysis for your preferred areas. I look forward to hearing from you soon."
-
-STRICT PROHIBITIONS:
-– NO text explaining what you're doing
-– NO commentary about email requirements
-– NO rewriting or multiple drafts
-– NO incomplete sentences
-– NO system explanations
-– Write the email once and stop""",
+Generate the email now:""",
 
             "hyperparameters": {
-                "max_tokens": 150,
-                "temperature": 0.2,
-                "top_p": 0.7,
-                "top_k": 20,
-                "repetition_penalty": 1.3
+                "max_tokens": 120,
+                "temperature": 0.1,
+                "top_p": 0.6,
+                "top_k": 10,
+                "repetition_penalty": 1.0
             }
         },
 
