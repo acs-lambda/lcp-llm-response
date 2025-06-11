@@ -17,7 +17,7 @@ Key Requirements:
  -Use proper grammar.
 
 Style Rules:
-– Do not include the signature of the email. Remeber you are a professional realtor that is responding to a client."""
+– Do not include the signature of the email. Remeber you are a professional realtor that is responding to a client.""",
 
     "hyperparameters": {
       "max_tokens": 80,
