@@ -371,6 +371,11 @@ def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id:
         scenario = raw_scenario.lower()
         logger.info(f"Normalized scenario: '{scenario}'")
         
+        # Special handling for 'intro' to map to 'intro_email'
+        if scenario == 'intro':
+            logger.info("Mapping 'intro' to 'intro_email'")
+            scenario = 'intro_email'
+        
         # Validate the scenario is one of the expected email generation scenarios
         valid_scenarios = ["summarizer", "intro_email", "continuation_email", "closing_referral"]
         if scenario in valid_scenarios:
