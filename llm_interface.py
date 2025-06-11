@@ -4,8 +4,8 @@ import boto3
 import logging
 from config import TAI_KEY, AWS_REGION
 from typing import Optional, Dict, Any, List
-from prompts import PROMPTS
-from db import get_user_preferences, store_llm_invocation
+from prompts import get_prompts
+from db import store_llm_invocation
 
 # Set up logging
 logger = logging.getLogger()
@@ -19,13 +19,17 @@ url = "https://api.together.xyz/v1/chat/completions"
 class LLMResponder:
     def __init__(self, scenario: str, account_id: Optional[str]):
         original_scenario = scenario
-        if scenario not in PROMPTS:
+        
+        # Get prompts with embedded preferences for this account
+        prompts = get_prompts(account_id)
+        
+        if scenario not in prompts:
             # Default to continuation_email if unknown scenario
             logger.warning(f"Unknown LLM scenario: '{original_scenario}'. Defaulting to 'continuation_email'.")
             scenario = "continuation_email"
         
         logger.info(f"Initializing LLMResponder - Scenario: '{scenario}', Account ID: {account_id}")
-        self.prompt_config = PROMPTS[scenario]
+        self.prompt_config = prompts[scenario]
         self.hyperparameters = self.prompt_config["hyperparameters"]
         self.system_prompt = self.prompt_config["system"]
         self.account_id = account_id
@@ -35,43 +39,7 @@ class LLMResponder:
         logger.info(f"Prompt configuration for scenario '{scenario}':")
         logger.info(f"Hyperparameters: {json.dumps(self.hyperparameters, indent=2)}")
         logger.info(f"System prompt length: {len(self.system_prompt)} characters")
-        
-        # For selector_llm or if account_id is None, use base prompt without preferences
-        if scenario == "selector_llm" or account_id is None or scenario == "reviewer_llm":
-            logger.info(f"Using base system prompt for scenario '{scenario}'")
-            self.system_prompt = self.prompt_config["system"]
-        else:
-            # Get user preferences
-            logger.info(f"Fetching user preferences for account {account_id}")
-            user_prefs = get_user_preferences(account_id)
-            logger.info(f"User preferences: {json.dumps(user_prefs, indent=2)}")
-            
-            # List to collect preference instructions
-            preference_instructions = []
-            
-            # Add instructions only if preferences are not NULL
-            if user_prefs['lcp_tone'] != 'NULL':
-                preference_instructions.append(f"IMPORTANT: You MUST write in a {user_prefs['lcp_tone']} tone throughout the entire response")
-            
-            if user_prefs['lcp_style'] != 'NULL':
-                preference_instructions.append(f"IMPORTANT: You MUST use a {user_prefs['lcp_style']} writing style for all content")
-            
-            if user_prefs['lcp_sample_prompt'] != 'NULL':
-                preference_instructions.append(f"IMPORTANT: You MUST closely match the style and tone of this writing sample: {user_prefs['lcp_sample_prompt']}")
-            
-            # Construct the final system prompt
-            if preference_instructions:
-                logger.info("Adding user preferences to system prompt")
-                # Start with a strong emphasis on following preferences
-                self.system_prompt = "IMPORTANT WRITING PREFERENCES - FOLLOW THESE STRICTLY:\n" + "\n".join(preference_instructions)
-                # Add a separator
-                self.system_prompt += "\n\n---\n\n"
-                # Add the base prompt
-                self.system_prompt += self.prompt_config["system"]
-                logger.info(f"Final system prompt length with preferences: {len(self.system_prompt)} characters")
-            else:
-                logger.info("No user preferences to add, using base system prompt")
-                self.system_prompt = self.prompt_config["system"]
+        logger.info(f"Using prompts with embedded preferences for account {account_id}")
 
     def format_conversation(self, email_chain: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         logger.info(f"Formatting conversation with {len(email_chain)} messages")
@@ -177,12 +145,13 @@ class LLMResponder:
 
 
 
-def format_conversation_for_llm(email_chain):
+def format_conversation_for_llm(email_chain, account_id: Optional[str] = None):
     """
     Formats the email chain to be compatible with the LLM input structure.
     Includes both subject and body for each email.
     """
-    formatted_messages = [{"role": "system", "content": PROMPTS["intro_email"]["system"]}]
+    prompts = get_prompts(account_id)
+    formatted_messages = [{"role": "system", "content": prompts["intro_email"]["system"]}]
     
     logger.info(f"Formatting conversation for LLM. Chain length: {len(email_chain)}")
     for i, email in enumerate(email_chain):
