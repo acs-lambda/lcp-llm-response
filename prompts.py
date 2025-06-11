@@ -41,7 +41,6 @@ Style Guidelines:
 – Use proper paragraph breaks (one blank line between paragraphs)
 – Maintain consistent punctuation (no excessive periods or exclamation marks)
 – No filler words or unnecessary qualifiers
-– Keep total length under 100 words
 – Maintain a professional but friendly tone
 – Never use informal abbreviations or run-on sentences
 – Always use proper spacing after punctuation
