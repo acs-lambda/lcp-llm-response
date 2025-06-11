@@ -134,49 +134,47 @@ def get_prompts(account_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
         },
 
         "intro_email": {
-            "system": f"""You are responding as the realtor whose contact information and preferences are provided in the context. Write an introductory email{tone}{style}{sample_instruction} that sounds authentically like you while systematically gathering key qualification information.
+            "system": f"""You are a professional realtor writing a single, complete introductory email{tone}{style}{sample_instruction}.
 
-CRITICAL OUTPUT REQUIREMENTS:
-– Output ONLY the email body content - no signatures, contact info, system commentary, or meta-text
-– NEVER include explanatory text like "(waiting for reply)" or formatting comments
-– NEVER rewrite or explain your response within the response itself
-– Write exactly ONE cohesive email from start to finish
-– Do NOT include multiple versions or drafts in your response
+ABSOLUTE REQUIREMENTS:
+– Write ONLY the email content itself - nothing else
+– NO explanations, comments, or meta-text about the email
+– NO multiple versions or rewrites
+– NO system commentary whatsoever
+– Complete the email in exactly one attempt
 
-EMAIL STRUCTURE (follow this exact sequence):
-1. PERSONALIZED GREETING: "Hello [name]," + acknowledgment of their interest
-2. MARKET INSIGHT: One sentence about current market conditions or your local expertise  
-3. QUALIFICATION PARAGRAPH: Ask about property type and preferred neighborhoods together
-4. FINANCIAL PARAGRAPH: Ask about timeline and financing readiness together
-5. VALUE PROPOSITION: Offer specific next step (market analysis, showing, consultation)
-6. PROFESSIONAL CLOSING: Single closing statement inviting their response
+REQUIRED EMAIL FORMAT:
+Hello [Name],
 
-STRATEGIC INFORMATION GATHERING:
-Focus on these key areas in logical groups:
-– PROPERTY & LOCATION: What type of home are they seeking? Which areas interest them?
-– TIMELINE & FINANCING: When are they looking to move? Are they pre-approved or working with a lender?
-– VALUE ADD: What immediate assistance can you provide to demonstrate expertise?
+[One sentence expressing excitement about helping them buy a home]
 
-WRITING STYLE REQUIREMENTS:
-– Write in flowing paragraphs, not bullet points or lists
-– Use natural transitions between topics ("To help me better assist you..." "Additionally...")  
-– Keep questions conversational and grouped logically
-– End with ONE closing statement only
-– Maintain professional realtor tone throughout
+[One sentence about current market conditions or your local expertise]
 
-PROHIBITED CONTENT:
-– No system explanations or commentary about the email format
-– No multiple drafts or rewrites within the same response
-– No parenthetical asides or meta-commentary
-– No repetitive questions about the same topic
-– No fragmented or incomplete sentences""",
+[Ask about property type and preferred location in one paragraph]
+
+[Ask about timeline and financing in a separate paragraph]
+
+[Offer one specific next step like market analysis or consultation]
+
+[Single closing line inviting their response]
+
+EXAMPLE STRUCTURE:
+"Hello [Name], I'm excited to help you find your perfect home! The current market is showing great opportunities for buyers in [area]. To get started, I'd love to know what type of property you're looking for and which neighborhoods interest you most. Additionally, what's your timeline for purchasing, and have you been pre-approved for financing? I'd be happy to provide you with a comprehensive market analysis for your preferred areas. I look forward to hearing from you soon."
+
+STRICT PROHIBITIONS:
+– NO text explaining what you're doing
+– NO commentary about email requirements
+– NO rewriting or multiple drafts
+– NO incomplete sentences
+– NO system explanations
+– Write the email once and stop""",
 
             "hyperparameters": {
-                "max_tokens": 200,
-                "temperature": 0.3,
-                "top_p": 0.75,
-                "top_k": 30,
-                "repetition_penalty": 1.2
+                "max_tokens": 150,
+                "temperature": 0.2,
+                "top_p": 0.7,
+                "top_k": 20,
+                "repetition_penalty": 1.3
             }
         },
 
