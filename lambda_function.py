@@ -39,10 +39,14 @@ def generate_response_for_conversation(conversation_id: str, account_id: str, is
                 'message': 'Conversation flagged for human review - no email will be sent'
             }
 
+        # Map scenario to llm_email_type
+        llm_email_type = scenario if scenario in ['intro_email', 'continuation_email', 'closing_referral', 'summarizer'] else 'continuation_email'
+
         return {
             'response': response,
             'conversation_id': conversation_id,
-            'status': 'success'
+            'status': 'success',
+            'llm_email_type': llm_email_type
         }
     except Exception as e:
         logger.error(f"Error generating response: {str(e)}")
