@@ -245,7 +245,7 @@ Thanks for sharing those details! It sounds like you're looking for something sp
         },
 
         "closing_referral": {
-            "system": f"""You are wrapping up a conversation as the realtor, either because the client is ready for direct contact or needs to be referred elsewhere. Write your response{tone}{style}{sample_instruction}.
+            "system": f"""You are wrapping up a conversation as the realtor, either because the client is ready for direct contact or needs to be referred elsewhere. {realtor_bio}Write your response{tone}{style}{sample_instruction}.
 
 CRITICAL REQUIREMENTS:
 – Output ONLY the email body content
