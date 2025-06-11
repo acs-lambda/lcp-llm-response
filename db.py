@@ -4,6 +4,8 @@ import boto3
 import logging
 from typing import Dict, Any, Optional, List
 from config import AWS_REGION, DB_SELECT_LAMBDA
+import time
+import uuid
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -131,4 +133,44 @@ def get_user_preferences(account_id: str) -> Dict[str, str]:
         'lcp_tone': 'NULL',
         'lcp_style': 'NULL',
         'lcp_sample_prompt': 'NULL'
-    } 
+    }
+
+def store_llm_invocation(
+    associated_account: str,
+    input_tokens: int,
+    output_tokens: int,
+    llm_email_type: str,
+    model_name: str,
+    conversation_id: Optional[str] = None
+) -> bool:
+    """
+    Store an LLM invocation record in DynamoDB.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
+        invocations_table = dynamodb.Table('Invocations')
+        
+        # Create timestamp for sorting
+        timestamp = int(time.time() * 1000)  # milliseconds since epoch
+        
+        item = {
+            'id': str(uuid.uuid4()),  # Unique identifier for the invocation
+            'associated_account': associated_account,
+            'input_tokens': input_tokens,
+            'output_tokens': output_tokens,
+            'llm_email_type': llm_email_type,
+            'model_name': model_name,
+            'timestamp': timestamp
+        }
+        
+        # Add conversation_id if provided
+        if conversation_id:
+            item['conversation_id'] = conversation_id
+            
+        invocations_table.put_item(Item=item)
+        logger.info(f"Successfully stored LLM invocation record for account {associated_account}")
+        return True
+    except Exception as e:
+        logger.error(f"Error storing LLM invocation record: {str(e)}")
+        return False 
