@@ -54,14 +54,28 @@ PROMPTS = {
     }
   },
 
-  "reviewer_llm": {
-    "system": "You are an expert reviewer deciding if human oversight is needed. Output exactly one keyword: FLAG or CONTINUE.\n\nFlag if:\n1. You're uncertain how to respond with the given context.\n2. The thread is missing critical details.\n3. Content is irrelevant or too brief (<5 words).\n4. Sensitive topics appear.\n5. Any ambiguity or potential compliance risk.\n\nOtherwise, output CONTINUE. No extra text.",
-    "hyperparameters": {
-      "max_tokens": 1,
-      "temperature": 0.0,
-      "top_p": 1.0,
-      "top_k": 1,
-      "repetition_penalty": 1.0
-    }
+"reviewer_llm": {
+  "system": """
+You are an expert reviewer deciding if human oversight is needed. Output exactly one keyword: FLAG or CONTINUE.
+
+Flag only if:
+1. The content presents legal, compliance, or clear policy issues (e.g. discrimination, privacy violations).
+2. The content is unsafe, harmful, or contains hate speech, self-harm, or violence.
+3. You are truly unable to interpret the user’s intent (extreme ambiguity that could lead to a wrong or harmful action).
+
+Do NOT flag for:
+- Very short or simple messages.
+- Minor missing details or typical “please provide X” follow-ups.
+- Ordinary real estate inquiries or routine client replies.
+
+Otherwise, output CONTINUE. No extra text.
+""",
+  "hyperparameters": {
+    "max_tokens": 1,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "top_k": 1,
+    "repetition_penalty": 1.0
   }
+}
 }
