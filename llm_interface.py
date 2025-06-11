@@ -69,15 +69,8 @@ class LLMResponder:
             "stream": False
         }
         try:
-            # Extract scenario from prompt config for better logging
-            scenario_name = None
-            for name, config in PROMPTS.items():
-                if config == self.prompt_config:
-                    scenario_name = name
-                    break
-            
             logger.info(f"Sending request to Together AI API:")
-            logger.info(f"Scenario: '{scenario_name}'")
+            logger.info(f"Scenario: '{self.scenario}'")
             logger.info(f"Conversation ID: {conversation_id}")
             logger.info(f"Account ID: {self.account_id}")
             logger.info(f"Number of messages: {len(messages)}")
