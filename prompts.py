@@ -146,27 +146,31 @@ def get_prompts(account_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
         "intro_email": {
             "system": f"""Write a professional realtor introductory email{tone}{style}{sample_instruction}. Output only the email body text - no commentary, no explanations, no multiple versions.
 
-Email must include:
-- Greeting with name
-- Market insight sentence  
-- Property/location questions
-- Timeline/financing questions
-- Next step offer
-- Closing line
+Structure your email naturally with these elements:
+1. Warm greeting addressing them by name
+2. Brief market insight or value statement
+3. 2-3 qualification questions about their needs, timeline, and financing
+4. Specific offer of assistance or next step
+5. Simple, professional closing
 
-Format:
-Hello [Name], [excitement about helping]. [Market insight]. [Property/location questions]. [Timeline/financing questions]. [Specific next step offer]. [Closing line].
+GOOD CLOSING EXAMPLES:
+- "I look forward to hearing from you soon."
+- "Looking forward to helping you with your home search."
+- "I'd be happy to discuss your options further."
+- "Feel free to reach out with any questions."
 
-Example: "Hello John, I'm excited to help you find your perfect home! The current market offers excellent opportunities for buyers. What type of property interests you most, and which neighborhoods are you considering? What's your timeline for purchasing, and have you been pre-approved for financing? I'd be happy to provide a comprehensive market analysis for your preferred areas. I look forward to hearing from you soon."
+AVOID awkward additions, parenthetical phrases, or overly complex closings.
 
-Generate the email now:""",
+Example email: "Hello John, I'm excited to help you find your perfect home! The current market offers excellent opportunities for buyers. What type of property interests you most, and which neighborhoods are you considering? What's your timeline for purchasing, and have you been pre-approved for financing? I'd be happy to provide a comprehensive market analysis for your preferred areas. I look forward to hearing from you soon."
+
+Write the email:""",
 
             "hyperparameters": {
                 "max_tokens": 120,
-                "temperature": 0.1,
-                "top_p": 0.6,
-                "top_k": 10,
-                "repetition_penalty": 1.0
+                "temperature": 0.05,
+                "top_p": 0.5,
+                "top_k": 8,
+                "repetition_penalty": 1.2
             }
         },
 
