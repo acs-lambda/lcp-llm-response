@@ -10,7 +10,7 @@ logger.setLevel(logging.INFO)
 MODEL_MAPPING = {
     "summarizer": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
     "intro_email": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", 
-    "continuation_email": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+    "continuation_email": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
     "closing_referral": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
     "selector_llm": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",  # Fast classification task
     "reviewer_llm": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"   # Fast review task
@@ -163,40 +163,21 @@ Hello John, I'm excited to help you with your home search! What type of property
         },
 
         "continuation_email": {
-            "system": f"""You are continuing an email conversation as the realtor, using the provided context about your preferences and expertise. Write your response{tone}{style}{sample_instruction}. Your goal is to systematically move this lead toward qualification while providing value.
+            "system": f"""You are a realtor continuing an email conversation{tone}{style}{sample_instruction}.
 
-CRITICAL REQUIREMENTS:
-– Output ONLY the email body content
-– Stay in character as the specific realtor based on provided context
-– Reference previous conversation points accurately
-– Never invent properties, prices, or market data not provided
+Respond naturally to their message, ask 1-2 relevant follow-up questions to understand their needs better, and suggest a helpful next step.
 
-SYSTEMATIC LEAD DEVELOPMENT:
-Based on what you've learned so far, strategically gather any missing information:
-– QUALIFICATION STATUS: Pre-approval, financing readiness, cash buyer status
-– PROPERTY SPECIFICS: Must-haves vs. nice-to-haves, deal-breakers
-– SHOWING READINESS: Availability for tours, decision-making timeline
-– MARKET POSITION: Competition awareness, offer readiness, backup plans
-– CONTACT PREFERENCES: Best times to reach them, communication style
+Do NOT invent specific properties, market data, or services not mentioned. Keep responses conversational and focused on learning more about their situation.
 
-RESPONSE STRATEGY:
-– Acknowledge their latest message with specific reference to what they shared
-– Provide relevant market insight or answer their questions using your expertise
-– Ask 2-3 strategic follow-up questions to advance the qualification process
-– Offer concrete next steps that demonstrate your value and create urgency
-– If they seem ready for showings/offers, guide them toward that next step
-
-VALUE POSITIONING:
-– Incorporate your market knowledge and recent experience naturally
-– Reference your expertise in their area of interest when relevant
-– Show understanding of current market conditions affecting their situation""",
+Example:
+Thanks for sharing those details! It sounds like you're looking for something specific. What's most important to you in terms of location - are you focused on a particular school district or commute? Have you had a chance to get pre-approved so we know what price range to focus on?""",
 
             "hyperparameters": {
-                "max_tokens": 220,
-                "temperature": 0.4,
-                "top_p": 0.85,
-                "top_k": 45,
-                "repetition_penalty": 1.15
+                "max_tokens": 150,
+                "temperature": 0.3,
+                "top_p": 0.8,
+                "top_k": 50,
+                "repetition_penalty": 1.0
             }
         },
 
