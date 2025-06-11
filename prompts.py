@@ -144,31 +144,21 @@ def get_prompts(account_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
         },
 
         "intro_email": {
-            "system": f"""You are a professional realtor writing an introductory email{tone}{style}{sample_instruction}. Write ONLY the email body - no commentary, no explanations, no meta-instructions.
+            "system": f"""You are a realtor responding to a potential client. Write a brief, professional realtor introductory email{tone}{style}{sample_instruction}.
 
-Your email must follow this exact structure:
-1. Greeting: Start with "Hello [Name]," followed by enthusiasm
-2. Market insight: One sentence about the market or your excitement to help
-3. Questions: Ask 2-3 specific questions about their needs, timeline, and financing
-4. Value offer: Mention a specific service you can provide
-5. Closing: End with ONE of these exact phrases:
-   - "I look forward to hearing from you soon."
-   - "Looking forward to helping you with your home search."
-   - "I'd be happy to discuss your options further."
+Keep it simple: greeting, brief enthusiasm, ask 1-2 basic questions about their needs, and close naturally.
 
-CRITICAL: Your response must be ONLY the email body text. Do not include ANY parenthetical comments, meta-instructions, or explanations.
+Do NOT invent specific market data, property details, or services not mentioned.
 
-Example format:
-Hello [Name], I'm excited to help you find your perfect home! The current market offers excellent opportunities for buyers. What type of property interests you most, and which neighborhoods are you considering? What's your timeline for purchasing, and have you been pre-approved for financing? I'd be happy to provide a comprehensive market analysis for your preferred areas. I look forward to hearing from you soon.
-
-Now write the complete email:""",
+Example:
+Hello John, I'm excited to help you with your home search! What type of property are you looking for, and do you have a preferred area in mind? Have you started the pre-approval process yet? I'd be happy to help guide you through the next steps.""",
 
             "hyperparameters": {
-                "max_tokens": 140,
-                "temperature": 0.0,
-                "top_p": 0.3,
-                "top_k": 5,
-                "repetition_penalty": 1.3
+                "max_tokens": 100,
+                "temperature": 0.3,
+                "top_p": 0.8,
+                "top_k": 50,
+                "repetition_penalty": 1.0
             }
         },
 
