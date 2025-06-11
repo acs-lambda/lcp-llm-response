@@ -375,9 +375,14 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None):
             scenario = "intro_email"
             logger.info("No emails provided, forcing 'intro_email' scenario")
         elif scenario is None:
-            logger.info("No scenario provided - using selector LLM to determine scenario...")
-            scenario = select_scenario_with_llm(emails, conversation_id, uid)  # Pass uid to selector LLM
-            logger.info(f"Selector LLM determined scenario: '{scenario}'")
+            # Check if most recent email is outbound - if so, use follow_up scenario
+            if emails and emails[-1].get('type') == 'outbound-email':
+                scenario = "follow_up"
+                logger.info("Most recent email is outbound - using 'follow_up' scenario")
+            else:
+                logger.info("No scenario provided - using selector LLM to determine scenario...")
+                scenario = select_scenario_with_llm(emails, conversation_id, uid)  # Pass uid to selector LLM
+                logger.info(f"Selector LLM determined scenario: '{scenario}'")
         else:
             logger.info(f"Using provided scenario: '{scenario}'")
   
