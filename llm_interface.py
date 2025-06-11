@@ -5,7 +5,7 @@ import logging
 from config import TAI_KEY, AWS_REGION
 from typing import Optional, Dict, Any, List
 from prompts import PROMPTS
-from db import get_user_preferences
+from db import get_user_preferences, store_llm_invocation
 
 # Set up logging
 logger = logging.getLogger()
@@ -27,6 +27,10 @@ class LLMResponder:
         logger.info(f"LLMResponder initialized with scenario: '{scenario}' for account_id: {account_id}")
         self.prompt_config = PROMPTS[scenario]
         self.hyperparameters = self.prompt_config["hyperparameters"]
+        self.system_prompt = self.prompt_config["system"]
+        self.account_id = account_id
+        self.scenario = scenario
+        self.model_name = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
         
         # For selector_llm or if account_id is None, use base prompt without preferences
         if scenario == "selector_llm" or account_id is None or scenario == "reviewer_llm":
@@ -69,13 +73,13 @@ class LLMResponder:
             messages.append({"role": role, "content": email_content})
         return messages
 
-    def send(self, messages: List[Dict[str, str]]) -> str:
+    def send(self, messages: List[Dict[str, str]], conversation_id: Optional[str] = None) -> str:
         headers = {
             "Authorization": f"Bearer {TAI_KEY}",
             "Content-Type": "application/json"
         }
         payload = {
-            "model": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+            "model": self.model_name,
             "messages": messages,
             **self.hyperparameters,
             "stop": ["<|im_end|>", "<|endoftext|>"],
@@ -100,19 +104,37 @@ class LLMResponder:
             if response.status != 200:
                 logger.error(f"API call failed with status {response.status}: {response.data.decode('utf-8')}")
                 raise Exception(f"Failed to fetch response from Together AI API: {response.data.decode('utf-8')}")
+            
             response_data = json.loads(response.data.decode('utf-8'))
             if "choices" not in response_data:
                 logger.error(f"Invalid API response format: {response_data}")
                 raise Exception("Invalid response format from Together AI API")
+            
+            # Extract token usage from response
+            usage = response_data.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+            
+            # Store invocation record if we have an account_id
+            if self.account_id:
+                store_llm_invocation(
+                    associated_account=self.account_id,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    llm_email_type=self.scenario,
+                    model_name=self.model_name,
+                    conversation_id=conversation_id
+                )
+            
             content = response_data["choices"][0]["message"]["content"]
             return content.replace('\\n', '\n')
         except Exception as e:
             logger.error(f"Error in send_message_to_llm: {str(e)}")
             raise
 
-    def generate_response(self, email_chain: List[Dict[str, Any]]) -> str:
+    def generate_response(self, email_chain: List[Dict[str, Any]], conversation_id: Optional[str] = None) -> str:
         messages = self.format_conversation(email_chain)
-        return self.send(messages)
+        return self.send(messages, conversation_id)
 
 
 
@@ -239,7 +261,7 @@ def update_thread_flag_review_override(conversation_id: str, flag_value: str) ->
         logger.error(f"Error updating flag_review_override: {str(e)}")
         return False
 
-def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: str) -> bool:
+def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: str, account_id: Optional[str] = None) -> bool:
     """
     Uses the reviewer_llm to determine if a conversation needs human review.
     Returns True if the conversation should be flagged for review, False otherwise.
@@ -254,13 +276,13 @@ def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: 
         logger.info(f"Review override enabled for conversation {conversation_id} - skipping reviewer LLM")
         return False  # Skip review since override is enabled
     
-    # Create a reviewer LLM instance
-    reviewer = LLMResponder("reviewer_llm", None)  # No user preferences needed for review
+    # Create a reviewer LLM instance with account_id if provided
+    reviewer = LLMResponder("reviewer_llm", account_id)  # Pass account_id to track invocations
     messages = reviewer.format_conversation(email_chain)
     
     try:
         logger.info("Invoking reviewer LLM to check if conversation needs review...")
-        response = reviewer.send(messages)
+        response = reviewer.send(messages, conversation_id)
         decision = response.strip().upper()
         logger.info(f"Reviewer LLM decision: {decision}")
         
@@ -282,17 +304,17 @@ def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: 
             logger.error(f"Failed to update flag_for_review for conversation {conversation_id}")
         return True
 
-def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id: str) -> str:
+def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id: str, account_id: Optional[str] = None) -> str:
     """
     Uses the selector_llm prompt to classify the email chain and return a scenario keyword.
     """
-    # Create a special LLMResponder instance just for selection, without user preferences
-    selector = LLMResponder("selector_llm", None)  # Pass None as account_id to skip user preferences
+    # Create a special LLMResponder instance with account_id if provided
+    selector = LLMResponder("selector_llm", account_id)  # Pass account_id to track invocations
     messages = selector.format_conversation(email_chain)
     
     try:
         logger.info("Invoking selector LLM to determine scenario...")
-        response = selector.send(messages)
+        response = selector.send(messages, conversation_id)
         raw_scenario = response.strip()
         logger.info(f"Selector LLM raw response: '{raw_scenario}'")
         
@@ -324,7 +346,7 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None):
         # 1) First check with reviewer LLM if conversation needs review (only if no scenario is forced)
         if conversation_id and scenario is None:
             logger.info("No scenario provided - checking with reviewer LLM first...")
-            if check_with_reviewer_llm(emails, conversation_id):
+            if check_with_reviewer_llm(emails, conversation_id, uid):  # Pass uid to reviewer LLM
                 # If flagged for review, return None to prevent email sending
                 logger.info(f"Conversation {conversation_id} flagged for review - no email will be sent")
                 return None
@@ -335,7 +357,7 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None):
             logger.info("No emails provided, forcing 'intro_email' scenario")
         elif scenario is None:
             logger.info("No scenario provided - using selector LLM to determine scenario...")
-            scenario = select_scenario_with_llm(emails, conversation_id)
+            scenario = select_scenario_with_llm(emails, conversation_id, uid)  # Pass uid to selector LLM
             logger.info(f"Selector LLM determined scenario: '{scenario}'")
         else:
             logger.info(f"Using provided scenario: '{scenario}'")
@@ -345,7 +367,7 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None):
         responder = LLMResponder(scenario, uid)  # Pass uid to get user preferences
         
         logger.info(f"Generating email response using '{scenario}' scenario...")
-        response = responder.generate_response(emails)
+        response = responder.generate_response(emails, conversation_id)
         logger.info(f"Successfully generated response for scenario '{scenario}' - length: {len(response)}")
         
         return response
