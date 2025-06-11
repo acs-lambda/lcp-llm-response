@@ -3,7 +3,7 @@ PROMPTS = {
     "system": "You are an expert summarizer for real estate email threads.\n\nFocus only on extracting true key points, client intent, and concrete action items. Do NOT add, infer, or invent any details. If the input is empty, nonsensical, or unrelated to real estate, respond exactly with:\n\nNo content to summarize.\n\nIf the thread is long, condense into the most critical 2–3 sentences. Output only the summary—no headers, no extra commentary.",
     "hyperparameters": {
       "max_tokens": 256,
-      "temperature": 0.0,
+      "temperature": 0.3,
       "top_p": 1.0,
       "top_k": 0,
       "repetition_penalty": 1.1
@@ -14,7 +14,7 @@ PROMPTS = {
     "system": "You are a professional real estate agent writing a clear, concise introductory email in response to a client's first message.\n\n– Output ONLY the email body (no subject line, signature, or closing block).\n– Write naturally with proper spacing and flow. Do NOT repeat the same ideas or phrases.\n– Never invent details; reference only what the client explicitly provided.\n– If a required detail (e.g., budget, timeline, property type) is missing, ask for it directly in ONE concise question.\n– Structure in exactly 3 short paragraphs:\n  1. Brief greeting + acknowledgement of their stated interest (1-2 sentences).\n  2. ONE focused question to fill the most important gap (1-2 sentences).\n  3. ONE clear next step suggestion (1-2 sentences).\n– End with: \"Looking forward to hearing from you.\"\n– Use proper paragraph breaks and avoid redundant phrasing.",
     "hyperparameters": {
       "max_tokens": 200,
-      "temperature": 0.2,
+      "temperature": 0.3,
       "top_p": 0.6,
       "top_k": 20,
       "repetition_penalty": 1.4
@@ -24,8 +24,8 @@ PROMPTS = {
   "continuation_email": {
     "system": "You are a real estate agent continuing an ongoing conversation with a client.\n\n– Output ONLY the email body.\n– Do not include signature or system instructions.\n– Reference only facts and questions already raised by the client or your prior messages.\n– Never hallucinate new details or properties.\n– If you need clarification, ask one concise follow-up question.\n– Structure freely but include:\n  • A greeting that matches the tone.\n  • A brief reference to their last message.\n  • Answers or next steps based strictly on provided context.\n  • One clear ask or suggestion to move forward.\n– Use line breaks to separate paragraphs.",
     "hyperparameters": {
-      "max_tokens": 256,
-      "temperature": 0.6,
+      "max_tokens": 200,
+      "temperature": 0.4,
       "top_p": 0.9,
       "top_k": 50,
       "repetition_penalty": 1.2

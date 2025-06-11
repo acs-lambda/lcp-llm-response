@@ -24,7 +24,7 @@ class LLMResponder:
             logger.warning(f"Unknown LLM scenario: '{original_scenario}'. Defaulting to 'continuation_email'.")
             scenario = "continuation_email"
         
-        logger.info(f"LLMResponder initialized with scenario: '{scenario}' for account_id: {account_id}")
+        logger.info(f"Initializing LLMResponder - Scenario: '{scenario}', Account ID: {account_id}")
         self.prompt_config = PROMPTS[scenario]
         self.hyperparameters = self.prompt_config["hyperparameters"]
         self.system_prompt = self.prompt_config["system"]
@@ -32,12 +32,19 @@ class LLMResponder:
         self.scenario = scenario
         self.model_name = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
         
+        logger.info(f"Prompt configuration for scenario '{scenario}':")
+        logger.info(f"Hyperparameters: {json.dumps(self.hyperparameters, indent=2)}")
+        logger.info(f"System prompt length: {len(self.system_prompt)} characters")
+        
         # For selector_llm or if account_id is None, use base prompt without preferences
         if scenario == "selector_llm" or account_id is None or scenario == "reviewer_llm":
+            logger.info(f"Using base system prompt for scenario '{scenario}'")
             self.system_prompt = self.prompt_config["system"]
         else:
             # Get user preferences
+            logger.info(f"Fetching user preferences for account {account_id}")
             user_prefs = get_user_preferences(account_id)
+            logger.info(f"User preferences: {json.dumps(user_prefs, indent=2)}")
             
             # List to collect preference instructions
             preference_instructions = []
@@ -54,23 +61,31 @@ class LLMResponder:
             
             # Construct the final system prompt
             if preference_instructions:
+                logger.info("Adding user preferences to system prompt")
                 # Start with a strong emphasis on following preferences
                 self.system_prompt = "IMPORTANT WRITING PREFERENCES - FOLLOW THESE STRICTLY:\n" + "\n".join(preference_instructions)
                 # Add a separator
                 self.system_prompt += "\n\n---\n\n"
                 # Add the base prompt
                 self.system_prompt += self.prompt_config["system"]
+                logger.info(f"Final system prompt length with preferences: {len(self.system_prompt)} characters")
             else:
+                logger.info("No user preferences to add, using base system prompt")
                 self.system_prompt = self.prompt_config["system"]
 
     def format_conversation(self, email_chain: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+        logger.info(f"Formatting conversation with {len(email_chain)} messages")
         messages = [
             {"role": "system", "content": self.system_prompt}
         ]
-        for email in email_chain:
+        
+        for i, email in enumerate(email_chain):
             email_content = f"Subject: {email.get('subject', '')}\n\nBody: {email.get('body', '')}"
             role = "user" if email.get('type') == 'inbound-email' else "assistant"
+            logger.info(f"Message {i+1} - Role: {role}, Subject: {email.get('subject', '')}, Body length: {len(email.get('body', ''))} chars")
             messages.append({"role": role, "content": email_content})
+            
+        logger.info(f"Formatted {len(messages)} total messages (including system prompt)")
         return messages
 
     def send(self, messages: List[Dict[str, str]], conversation_id: Optional[str] = None) -> str:
@@ -93,19 +108,32 @@ class LLMResponder:
                     scenario_name = name
                     break
             
-            logger.info(f"Sending request to Together AI API for scenario: '{scenario_name}' with {len(messages)} messages")
+            logger.info(f"Sending request to Together AI API:")
+            logger.info(f"Scenario: '{scenario_name}'")
+            logger.info(f"Conversation ID: {conversation_id}")
+            logger.info(f"Account ID: {self.account_id}")
+            logger.info(f"Number of messages: {len(messages)}")
+            logger.info(f"Request payload: {json.dumps(payload, indent=2)}")
+            
             encoded_data = json.dumps(payload).encode('utf-8')
+            logger.info("Making API request...")
             response = http.request(
                 'POST',
                 url,
                 body=encoded_data,
                 headers=headers
             )
+            
+            logger.info(f"API response status: {response.status}")
             if response.status != 200:
-                logger.error(f"API call failed with status {response.status}: {response.data.decode('utf-8')}")
-                raise Exception(f"Failed to fetch response from Together AI API: {response.data.decode('utf-8')}")
+                error_msg = response.data.decode('utf-8')
+                logger.error(f"API call failed with status {response.status}: {error_msg}")
+                raise Exception(f"Failed to fetch response from Together AI API: {error_msg}")
             
             response_data = json.loads(response.data.decode('utf-8'))
+            logger.info("Raw API response:")
+            logger.info(json.dumps(response_data, indent=2))
+            
             if "choices" not in response_data:
                 logger.error(f"Invalid API response format: {response_data}")
                 raise Exception("Invalid response format from Together AI API")
@@ -114,10 +142,14 @@ class LLMResponder:
             usage = response_data.get("usage", {})
             input_tokens = usage.get("prompt_tokens", 0)
             output_tokens = usage.get("completion_tokens", 0)
+            total_tokens = usage.get("total_tokens", 0)
+            
+            logger.info(f"Token usage - Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
             
             # Store invocation record if we have an account_id
             if self.account_id:
-                store_llm_invocation(
+                logger.info("Storing invocation record in DynamoDB")
+                invocation_success = store_llm_invocation(
                     associated_account=self.account_id,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,
@@ -125,14 +157,17 @@ class LLMResponder:
                     model_name=self.model_name,
                     conversation_id=conversation_id
                 )
+                logger.info(f"Stored invocation record: {'Success' if invocation_success else 'Failed'}")
             
             content = response_data["choices"][0]["message"]["content"]
+            logger.info(f"Generated response length: {len(content)} characters")
             return content.replace('\\n', '\n')
         except Exception as e:
-            logger.error(f"Error in send_message_to_llm: {str(e)}")
+            logger.error(f"Error in send_message_to_llm: {str(e)}", exc_info=True)  # Added stack trace
             raise
 
     def generate_response(self, email_chain: List[Dict[str, Any]], conversation_id: Optional[str] = None) -> str:
+        logger.info(f"Generating response for conversation {conversation_id}")
         messages = self.format_conversation(email_chain)
         return self.send(messages, conversation_id)
 
@@ -266,8 +301,14 @@ def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: 
     Uses the reviewer_llm to determine if a conversation needs human review.
     Returns True if the conversation should be flagged for review, False otherwise.
     """
+    logger.info(f"Starting reviewer LLM check for conversation {conversation_id}")
+    logger.info(f"Account ID: {account_id}")
+    logger.info(f"Email chain length: {len(email_chain)} messages")
+    
     # First check if review override is enabled
     override_flag = get_thread_flag_review_override(conversation_id)
+    logger.info(f"Review override flag: {override_flag}")
+    
     if override_flag is None:
         logger.error(f"Could not get flag_review_override for conversation {conversation_id}")
         return True  # Default to flagging for review on error
@@ -277,6 +318,7 @@ def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: 
         return False  # Skip review since override is enabled
     
     # Create a reviewer LLM instance with account_id if provided
+    logger.info("Creating reviewer LLM instance")
     reviewer = LLMResponder("reviewer_llm", account_id)  # Pass account_id to track invocations
     messages = reviewer.format_conversation(email_chain)
     
@@ -292,6 +334,7 @@ def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: 
                 logger.error(f"Failed to update flag_for_review for conversation {conversation_id}")
             return True
         elif decision == "CONTINUE":
+            logger.info(f"Reviewer LLM decided to continue: {conversation_id}")
             return False
         else:
             logger.warning(f"Reviewer LLM returned unknown decision '{decision}', defaulting to FLAG")
@@ -299,7 +342,8 @@ def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: 
                 logger.error(f"Failed to update flag_for_review for conversation {conversation_id}")
             return True
     except Exception as e:
-        logger.error(f"Error in reviewer LLM: {str(e)}. Defaulting to FLAG.")
+        logger.error(f"Error in reviewer LLM: {str(e)}", exc_info=True)  # Added stack trace
+        logger.error(f"Defaulting to FLAG for conversation {conversation_id}")
         if not update_thread_flag_for_review(conversation_id, 'true'):
             logger.error(f"Failed to update flag_for_review for conversation {conversation_id}")
         return True
@@ -308,7 +352,12 @@ def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id:
     """
     Uses the selector_llm prompt to classify the email chain and return a scenario keyword.
     """
+    logger.info(f"Starting scenario selection for conversation {conversation_id}")
+    logger.info(f"Account ID: {account_id}")
+    logger.info(f"Email chain length: {len(email_chain)} messages")
+    
     # Create a special LLMResponder instance with account_id if provided
+    logger.info("Creating selector LLM instance")
     selector = LLMResponder("selector_llm", account_id)  # Pass account_id to track invocations
     messages = selector.format_conversation(email_chain)
     
@@ -331,7 +380,8 @@ def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id:
             logger.warning(f"Selector LLM returned invalid scenario '{scenario}', defaulting to 'continuation_email'")
             return "continuation_email"
     except Exception as e:
-        logger.error(f"Error in selector LLM: {str(e)}. Defaulting to 'continuation_email'.")
+        logger.error(f"Error in selector LLM: {str(e)}", exc_info=True)  # Added stack trace
+        logger.error(f"Defaulting to 'continuation_email' for conversation {conversation_id}")
         return "continuation_email"
 
 def generate_email_response(emails, uid, conversation_id=None, scenario=None):
@@ -342,6 +392,7 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None):
     try:
         logger.info(f"Starting email generation for conversation_id: {conversation_id}, uid: {uid}")
         logger.info(f"Initial scenario provided: {scenario}")
+        logger.info(f"Email chain length: {len(emails)} messages")
         
         # 1) First check with reviewer LLM if conversation needs review (only if no scenario is forced)
         if conversation_id and scenario is None:
@@ -372,5 +423,5 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None):
         
         return response
     except Exception as e:
-        logger.error(f"Error generating email response: {str(e)}")
+        logger.error(f"Error generating email response: {str(e)}", exc_info=True)  # Added stack trace
         raise
