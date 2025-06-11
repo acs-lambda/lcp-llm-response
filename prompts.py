@@ -104,23 +104,82 @@ def get_user_sample_prompt(account_id: str) -> str:
         return sample if sample != 'NULL' else 'NULL'
     return 'NULL'
 
+def get_user_location_data(account_id: str) -> Dict[str, str]:
+    """Get user's location data by account ID."""
+    if not account_id:
+        return {}
+    
+    result = invoke_db_select(
+        table_name='Users',
+        index_name="id-index",
+        key_name='id',
+        key_value=account_id
+    )
+    
+    if isinstance(result, list) and result:
+        user_data = result[0]
+        return {
+            'location': user_data.get('location', ''),
+            'state': user_data.get('state', ''),
+            'country': user_data.get('country', ''),
+            'zipcode': user_data.get('zipcode', ''),
+            'bio': user_data.get('bio', '')
+        }
+    return {}
+
+def construct_realtor_bio(location_data: Dict[str, str]) -> str:
+    """Construct a realtor bio from location data and bio."""
+    if not location_data:
+        return ""
+    
+    bio_parts = []
+    
+    # Add location context
+    location_info = []
+    if location_data.get('location'):
+        location_info.append(location_data['location'])
+    if location_data.get('state'):
+        location_info.append(location_data['state'])
+    if location_data.get('country') and location_data['country'].lower() != 'united states':
+        location_info.append(location_data['country'])
+    
+    location_context = ""
+    if location_info:
+        location_str = ", ".join(location_info)
+        if location_data.get('zipcode'):
+            location_str += f" ({location_data['zipcode']})"
+        location_context = f"You specialize in the {location_str} market. "
+    
+    # Build the complete bio instruction
+    if location_data.get('bio'):
+        if location_context:
+            return f"The realtor you are emulating wrote this bio: \"{location_data['bio']}\" {location_context}Use this information to inform your responses and maintain consistency with their professional identity. "
+        else:
+            return f"The realtor you are emulating wrote this bio: \"{location_data['bio']}\" Use this information to inform your responses and maintain consistency with their professional identity. "
+    elif location_context:
+        return f"You are a local real estate expert. {location_context}Use your market expertise to inform your responses. "
+    
+    return ""
+
 
 
 def get_prompts(account_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
     """
-    Get the prompts dictionary with user preferences embedded directly into the system prompts.
+    Get the prompts dictionary with user preferences and realtor bio embedded directly into the system prompts.
     For scenarios that don't use preferences (selector_llm, reviewer_llm), account_id is ignored.
     """
     
-    # Get user preferences if account_id provided
+    # Get user preferences and bio if account_id provided
     tone = ""
     style = ""
     sample_instruction = ""
+    realtor_bio = ""
     
     if account_id and account_id not in ['selector_llm', 'reviewer_llm']:
         user_tone = get_user_tone(account_id)
         user_style = get_user_style(account_id)
         user_sample = get_user_sample_prompt(account_id)
+        location_data = get_user_location_data(account_id)
         
         if user_tone != 'NULL':
             tone = f" in a {user_tone} tone"
@@ -130,10 +189,12 @@ def get_prompts(account_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
         
         if user_sample != 'NULL':
             sample_instruction = f" that closely matches the style and tone of this writing sample: {user_sample}"
+        
+        realtor_bio = construct_realtor_bio(location_data)
     
     return {
         "summarizer": {
-            "system": f"You are an expert summarizer for real estate email threads. Write your summary{tone}{style}{sample_instruction}.\n\nFocus only on extracting true key points, client intent, and concrete action items. Do NOT add, infer, or invent any details. If the input is empty, nonsensical, or unrelated to real estate, respond exactly with:\n\nNo content to summarize.\n\nIf the thread is long, condense into the most critical 2–3 sentences. Output only the summary—no headers, no extra commentary.",
+            "system": f"You are an expert summarizer for real estate email threads. {realtor_bio}Write your summary{tone}{style}{sample_instruction}.\n\nFocus only on extracting true key points, client intent, and concrete action items. Do NOT add, infer, or invent any details. If the input is empty, nonsensical, or unrelated to real estate, respond exactly with:\n\nNo content to summarize.\n\nIf the thread is long, condense into the most critical 2–3 sentences. Output only the summary—no headers, no extra commentary.",
             "hyperparameters": {
                 "max_tokens": 256,
                 "temperature": 0.3,
@@ -144,7 +205,7 @@ def get_prompts(account_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
         },
 
         "intro_email": {
-            "system": f"""You are a realtor responding to a potential client. Write a brief, professional realtor introductory email{tone}{style}{sample_instruction}.
+            "system": f"""You are a realtor responding to a potential client. {realtor_bio}Write a brief, professional realtor introductory email{tone}{style}{sample_instruction}.
 
 Keep it simple: greeting, brief enthusiasm, ask 1-2 basic questions about their needs, and close naturally.
 
@@ -164,7 +225,7 @@ Hello John, I'm excited to help you with your home search! What type of property
         },
 
         "continuation_email": {
-            "system": f"""You are a realtor continuing an email conversation{tone}{style}{sample_instruction}.
+            "system": f"""You are a realtor continuing an email conversation. {realtor_bio}Respond{tone}{style}{sample_instruction}.
 
 Respond naturally to their message, ask 1-2 relevant follow-up questions to understand their needs better, and suggest a helpful next step.
 
