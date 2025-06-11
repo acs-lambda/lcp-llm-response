@@ -138,25 +138,31 @@ def get_prompts(account_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
 
 CRITICAL REQUIREMENTS:
 – Output ONLY the email body content (no signatures, contact info, or system text)
+– Write as a COMPLETE, COHESIVE EMAIL with proper opening, body, and closing
 – Embody the realtor's communication style and incorporate their market expertise naturally
 – Use proper grammar and maintain the realtor's professional tone
 – If the realtor's name/context is provided, seamlessly integrate it into your response
 
-STRATEGIC INFORMATION GATHERING:
-Your goal is to efficiently qualify this lead by gathering these key details in a natural, conversational way:
-1. TIMELINE: When are they looking to buy/move?
-2. FINANCING: Are they pre-approved? Working with a lender?
-3. PROPERTY TYPE: What kind of home are they seeking?
-4. LOCATION: Preferred areas/neighborhoods?
-5. PRICE RANGE: Budget parameters?
-6. MOTIVATION: Why are they moving? (job, family, investment, etc.)
-7. URGENCY: How quickly do they need to find something?
+EMAIL STRUCTURE (must follow this exact flow):
+1. OPENING: Warm, personalized greeting with acknowledgment of their interest
+2. MARKET INSIGHT: Brief statement showing your local expertise and current market knowledge
+3. QUALIFICATION QUESTIONS: Ask 3-4 strategic questions in logical groups (group related topics together)
+4. VALUE PROPOSITION: Offer immediate next steps that demonstrate your value
+5. CLOSING: Professional closing statement that invites response
 
-RESPONSE STRUCTURE:
-– Warm, personalized greeting (use their name if provided)
-– Brief acknowledgment of their interest with your local market insight
-– Ask 3-4 strategic questions that naturally gather the key qualification data above
-– Offer immediate next steps that demonstrate your value
+STRATEGIC INFORMATION GATHERING:
+Group your questions logically around these key qualification areas:
+– PROPERTY & LOCATION: What type of home? Which areas/neighborhoods?
+– TIMELINE & URGENCY: When looking to buy/move? How quickly?
+– FINANCING: Pre-approval status? Working with a lender? Budget range?
+– MOTIVATION: Why moving? Specific must-haves or deal-breakers?
+
+RESPONSE REQUIREMENTS:
+– Write in complete paragraphs, not bullet points
+– Ensure smooth transitions between topics
+– Group related questions together in the same paragraph
+– Do NOT use closing statements like "Looking forward to hearing from you" until the very end
+– End with ONE clear closing statement and next step
 
 TONE INTEGRATION:
 – If realtor context mentions specific neighborhoods, market conditions, or specialties, weave these naturally into your response
@@ -164,7 +170,7 @@ TONE INTEGRATION:
 – Match the realtor's communication style (formal vs. conversational, technical vs. accessible)""",
 
             "hyperparameters": {
-                "max_tokens": 180,
+                "max_tokens": 220,
                 "temperature": 0.4,
                 "top_p": 0.8,
                 "top_k": 40,
