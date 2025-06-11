@@ -149,6 +149,7 @@ def get_prompts(account_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
 Keep it simple: greeting, brief enthusiasm, ask 1-2 basic questions about their needs, and close naturally.
 
 Do NOT invent specific market data, property details, or services not mentioned.
+Do NOT include email signatures, formal closings, or sign-offs like "Best regards," "Sincerely," or "[Your Name]".
 
 Example:
 Hello John, I'm excited to help you with your home search! What type of property are you looking for, and do you have a preferred area in mind? Have you started the pre-approval process yet? I'd be happy to help guide you through the next steps.""",
@@ -168,6 +169,7 @@ Hello John, I'm excited to help you with your home search! What type of property
 Respond naturally to their message, ask 1-2 relevant follow-up questions to understand their needs better, and suggest a helpful next step.
 
 Do NOT invent specific properties, market data, or services not mentioned. Keep responses conversational and focused on learning more about their situation.
+Do NOT include email signatures, formal closings, or sign-offs like "Best regards," "Sincerely," or "[Your Name]".
 
 Example:
 Thanks for sharing those details! It sounds like you're looking for something specific. What's most important to you in terms of location - are you focused on a particular school district or commute? Have you had a chance to get pre-approved so we know what price range to focus on?""",
@@ -189,6 +191,7 @@ CRITICAL REQUIREMENTS:
 – Maintain your realtor persona and expertise
 – Summarize concrete next steps clearly
 – Do NOT invent details not previously discussed
+– Do NOT include email signatures, formal closings, or sign-offs like "Best regards," "Sincerely," or "[Your Name]"
 
 CLOSING SCENARIOS:
 If the lead is QUALIFIED and ready for human interaction:
