@@ -4,7 +4,7 @@ import boto3
 import logging
 from config import TAI_KEY, AWS_REGION
 from typing import Optional, Dict, Any, List
-from prompts import get_prompts
+from prompts import get_prompts, MODEL_MAPPING
 from db import store_llm_invocation
 
 # Set up logging
@@ -34,9 +34,10 @@ class LLMResponder:
         self.system_prompt = self.prompt_config["system"]
         self.account_id = account_id
         self.scenario = scenario
-        self.model_name = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
+        self.model_name = MODEL_MAPPING.get(scenario, "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8")
         
         logger.info(f"Prompt configuration for scenario '{scenario}':")
+        logger.info(f"Model: {self.model_name}")
         logger.info(f"Hyperparameters: {json.dumps(self.hyperparameters, indent=2)}")
         logger.info(f"System prompt length: {len(self.system_prompt)} characters")
         logger.info(f"Using prompts with embedded preferences for account {account_id}")
