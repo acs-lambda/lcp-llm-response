@@ -10,7 +10,7 @@ logger.setLevel(logging.INFO)
 MODEL_MAPPING = {
     "summarizer": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
     "intro_email": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", 
-    "continuation_email": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+    "continuation_email": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
     "closing_referral": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
     "selector_llm": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",  # Fast classification task
     "reviewer_llm": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"   # Fast review task
@@ -144,69 +144,40 @@ def get_prompts(account_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
         },
 
         "intro_email": {
-            "system": f"""You are a professional realtor writing an introductory email{tone}{style}{sample_instruction}. Write ONLY the email body - no commentary, no explanations, no meta-instructions.
+            "system": f"""You are a realtor responding to a potential client. Write a brief, professional realtor introductory email{tone}{style}{sample_instruction}.
 
-Your email must follow this exact structure:
-1. Greeting: Start with "Hello [Name]," followed by enthusiasm
-2. Market insight: One sentence about the market or your excitement to help
-3. Questions: Ask 2-3 specific questions about their needs, timeline, and financing
-4. Value offer: Mention a specific service you can provide
-5. Closing: End with ONE of these exact phrases:
-   - "I look forward to hearing from you soon."
-   - "Looking forward to helping you with your home search."
-   - "I'd be happy to discuss your options further."
+Keep it simple: greeting, brief enthusiasm, ask 1-2 basic questions about their needs, and close naturally.
 
-CRITICAL: Your response must be ONLY the email body text. Do not include ANY parenthetical comments, meta-instructions, or explanations.
+Do NOT invent specific market data, property details, or services not mentioned.
 
-Example format:
-Hello [Name], I'm excited to help you find your perfect home! The current market offers excellent opportunities for buyers. What type of property interests you most, and which neighborhoods are you considering? What's your timeline for purchasing, and have you been pre-approved for financing? I'd be happy to provide a comprehensive market analysis for your preferred areas. I look forward to hearing from you soon.
-
-Now write the complete email:""",
+Example:
+Hello John, I'm excited to help you with your home search! What type of property are you looking for, and do you have a preferred area in mind? Have you started the pre-approval process yet? I'd be happy to help guide you through the next steps.""",
 
             "hyperparameters": {
-                "max_tokens": 140,
-                "temperature": 0.0,
-                "top_p": 0.3,
-                "top_k": 5,
-                "repetition_penalty": 1.3
+                "max_tokens": 100,
+                "temperature": 0.3,
+                "top_p": 0.8,
+                "top_k": 50,
+                "repetition_penalty": 1.0
             }
         },
 
         "continuation_email": {
-            "system": f"""You are continuing an email conversation as the realtor, using the provided context about your preferences and expertise. Write your response{tone}{style}{sample_instruction}. Your goal is to systematically move this lead toward qualification while providing value.
+            "system": f"""You are a realtor continuing an email conversation{tone}{style}{sample_instruction}.
 
-CRITICAL REQUIREMENTS:
-– Output ONLY the email body content
-– Stay in character as the specific realtor based on provided context
-– Reference previous conversation points accurately
-– Never invent properties, prices, or market data not provided
+Respond naturally to their message, ask 1-2 relevant follow-up questions to understand their needs better, and suggest a helpful next step.
 
-SYSTEMATIC LEAD DEVELOPMENT:
-Based on what you've learned so far, strategically gather any missing information:
-– QUALIFICATION STATUS: Pre-approval, financing readiness, cash buyer status
-– PROPERTY SPECIFICS: Must-haves vs. nice-to-haves, deal-breakers
-– SHOWING READINESS: Availability for tours, decision-making timeline
-– MARKET POSITION: Competition awareness, offer readiness, backup plans
-– CONTACT PREFERENCES: Best times to reach them, communication style
+Do NOT invent specific properties, market data, or services not mentioned. Keep responses conversational and focused on learning more about their situation.
 
-RESPONSE STRATEGY:
-– Acknowledge their latest message with specific reference to what they shared
-– Provide relevant market insight or answer their questions using your expertise
-– Ask 2-3 strategic follow-up questions to advance the qualification process
-– Offer concrete next steps that demonstrate your value and create urgency
-– If they seem ready for showings/offers, guide them toward that next step
-
-VALUE POSITIONING:
-– Incorporate your market knowledge and recent experience naturally
-– Reference your expertise in their area of interest when relevant
-– Show understanding of current market conditions affecting their situation""",
+Example:
+Thanks for sharing those details! It sounds like you're looking for something specific. What's most important to you in terms of location - are you focused on a particular school district or commute? Have you had a chance to get pre-approved so we know what price range to focus on?""",
 
             "hyperparameters": {
-                "max_tokens": 220,
-                "temperature": 0.4,
-                "top_p": 0.85,
-                "top_k": 45,
-                "repetition_penalty": 1.15
+                "max_tokens": 150,
+                "temperature": 0.3,
+                "top_p": 0.8,
+                "top_k": 50,
+                "repetition_penalty": 1.0
             }
         },
 
@@ -248,7 +219,7 @@ FINAL VALUE ADD:
         "selector_llm": {
             "system": "You are a classifier for real estate email automation. Choose exactly one action: summarizer, intro_email, continuation_email, or closing_referral. Output only that keyword.\n\nRules:\n– intro_email: First contact from a new lead\n– continuation_email: Ongoing conversation that needs more qualification/development\n– closing_referral: Lead is ready for human contact OR needs referral\n– summarizer: Thread is too long and needs condensing before processing\n\nPrioritize continuation_email to maximize information gathering before flagging for human intervention.",
             "hyperparameters": {
-                "max_tokens": 1,
+                "max_tokens": 2,
                 "temperature": 0.0,
                 "top_p": 1.0,
                 "top_k": 1,
