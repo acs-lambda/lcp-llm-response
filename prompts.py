@@ -6,6 +6,16 @@ from config import AWS_REGION
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Model mapping for each LLM type - easily change models here
+MODEL_MAPPING = {
+    "summarizer": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+    "intro_email": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", 
+    "continuation_email": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+    "closing_referral": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+    "selector_llm": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",  # Fast classification task
+    "reviewer_llm": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"   # Fast review task
+}
+
 # Import the db functionality for getting user preferences
 def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, key_value: Any) -> Optional[list]:
     """
