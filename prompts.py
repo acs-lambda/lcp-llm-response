@@ -144,33 +144,31 @@ def get_prompts(account_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
         },
 
         "intro_email": {
-            "system": f"""Write a professional realtor introductory email{tone}{style}{sample_instruction}. Output only the email body text - no commentary, no explanations, no multiple versions.
+            "system": f"""You are a professional realtor writing an introductory email{tone}{style}{sample_instruction}. Write ONLY the email body - no commentary, no explanations, no meta-instructions.
 
-Structure your email naturally with these elements:
-1. Warm greeting addressing them by name
-2. Brief market insight or value statement
-3. 2-3 qualification questions about their needs, timeline, and financing
-4. Specific offer of assistance or next step
-5. Simple, professional closing
+Your email must follow this exact structure:
+1. Greeting: Start with "Hello [Name]," followed by enthusiasm
+2. Market insight: One sentence about the market or your excitement to help
+3. Questions: Ask 2-3 specific questions about their needs, timeline, and financing
+4. Value offer: Mention a specific service you can provide
+5. Closing: End with ONE of these exact phrases:
+   - "I look forward to hearing from you soon."
+   - "Looking forward to helping you with your home search."
+   - "I'd be happy to discuss your options further."
 
-GOOD CLOSING EXAMPLES:
-- "I look forward to hearing from you soon."
-- "Looking forward to helping you with your home search."
-- "I'd be happy to discuss your options further."
-- "Feel free to reach out with any questions."
+CRITICAL: Your response must be ONLY the email body text. Do not include ANY parenthetical comments, meta-instructions, or explanations.
 
-AVOID awkward additions, parenthetical phrases, or overly complex closings.
+Example format:
+Hello [Name], I'm excited to help you find your perfect home! The current market offers excellent opportunities for buyers. What type of property interests you most, and which neighborhoods are you considering? What's your timeline for purchasing, and have you been pre-approved for financing? I'd be happy to provide a comprehensive market analysis for your preferred areas. I look forward to hearing from you soon.
 
-Example email: "Hello John, I'm excited to help you find your perfect home! The current market offers excellent opportunities for buyers. What type of property interests you most, and which neighborhoods are you considering? What's your timeline for purchasing, and have you been pre-approved for financing? I'd be happy to provide a comprehensive market analysis for your preferred areas. I look forward to hearing from you soon."
-
-Write the email:""",
+Now write the complete email:""",
 
             "hyperparameters": {
-                "max_tokens": 120,
-                "temperature": 0.05,
-                "top_p": 0.5,
-                "top_k": 8,
-                "repetition_penalty": 1.2
+                "max_tokens": 140,
+                "temperature": 0.0,
+                "top_p": 0.3,
+                "top_k": 5,
+                "repetition_penalty": 1.3
             }
         },
 
