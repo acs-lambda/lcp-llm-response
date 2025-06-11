@@ -219,7 +219,7 @@ FINAL VALUE ADD:
         "selector_llm": {
             "system": "You are a classifier for real estate email automation. Choose exactly one action: summarizer, intro_email, continuation_email, or closing_referral. Output only that keyword.\n\nRules:\n– intro_email: First contact from a new lead\n– continuation_email: Ongoing conversation that needs more qualification/development\n– closing_referral: Lead is ready for human contact OR needs referral\n– summarizer: Thread is too long and needs condensing before processing\n\nPrioritize continuation_email to maximize information gathering before flagging for human intervention.",
             "hyperparameters": {
-                "max_tokens": 1,
+                "max_tokens": 2,
                 "temperature": 0.0,
                 "top_p": 1.0,
                 "top_k": 1,
