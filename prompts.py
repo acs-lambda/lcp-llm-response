@@ -224,11 +224,12 @@ def get_prompts(account_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
 
 The instructions will specify what to address, what questions to ask, and the overall approach. Write naturally and conversationally based on these instructions.
 
-Do NOT invent specific market data, property details, or services not mentioned in the instructions.
-Do NOT include email signatures, formal closings, or sign-offs like "Best regards," "Sincerely," or "[Your Name]".""",
+IMPORTANT GUIDELINES:
+- Do NOT invent specific market data, property details, or services not mentioned in the instructions
+- Do NOT include email signatures, formal closings, or sign-offs like "Best regards," "Sincerely," or "[Your Name]".""",
 
             "hyperparameters": {
-                "max_tokens": 100,
+                "max_tokens": 150,  # Increased from 100 to 200 to allow for complete responses
                 "temperature": 0.3,
                 "top_p": 0.8,
                 "top_k": 50,
