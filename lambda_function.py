@@ -1,6 +1,7 @@
 import json
 import boto3
 import logging
+import uuid
 from typing import Dict, Any, List
 
 from llm_interface import generate_email_response, format_conversation_for_llm
@@ -10,12 +11,25 @@ from db import get_email_chain
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-def generate_response_for_conversation(conversation_id: str, account_id: str, is_first_email: bool = False, scenario: str = None) -> Dict[str, Any]:
+def generate_response_for_conversation(conversation_id: str, account_id: str, invocation_id: str, is_first_email: bool = False, scenario: str = None) -> Dict[str, Any]:
     """
     Generates an LLM response for a conversation.
     Returns the generated response and status.
+    
+    Args:
+        conversation_id: The conversation ID
+        account_id: The account ID  
+        invocation_id: Unique ID for this Lambda invocation (groups all LLM calls)
+        is_first_email: Whether this is the first email in a chain
+        scenario: Optional scenario override
     """
     try:
+        logger.info(f"Starting response generation for invocation {invocation_id}")
+        logger.info(f"  - Conversation: {conversation_id}")
+        logger.info(f"  - Account: {account_id}")
+        logger.info(f"  - Is first email: {is_first_email}")
+        logger.info(f"  - Scenario: {scenario}")
+        
         # Get the email chain
         chain = get_email_chain(conversation_id)
         
@@ -26,15 +40,16 @@ def generate_response_for_conversation(conversation_id: str, account_id: str, is
         if is_first_email:
             chain = [chain[0]]
 
-        # Generate response
-        response = generate_email_response(chain, account_id, conversation_id, scenario)
-        logger.info(f"Generated response for conversation {conversation_id} using scenario '{scenario}'")
+        # Generate response with invocation_id for tracking
+        response = generate_email_response(chain, account_id, conversation_id, scenario, invocation_id)
+        logger.info(f"Generated response for conversation {conversation_id} using scenario '{scenario}' (invocation: {invocation_id})")
 
         # If response is None, it means the conversation was flagged for review
         if response is None:
             return {
                 'response': None,
                 'conversation_id': conversation_id,
+                'invocation_id': invocation_id,
                 'status': 'flagged_for_review',
                 'message': 'Conversation flagged for human review - no email will be sent'
             }
@@ -45,14 +60,16 @@ def generate_response_for_conversation(conversation_id: str, account_id: str, is
         return {
             'response': response,
             'conversation_id': conversation_id,
+            'invocation_id': invocation_id,
             'status': 'success',
             'llm_email_type': llm_email_type
         }
     except Exception as e:
-        logger.error(f"Error generating response: {str(e)}")
+        logger.error(f"Error generating response for invocation {invocation_id}: {str(e)}")
         return {
             'status': 'error',
-            'error': str(e)
+            'error': str(e),
+            'invocation_id': invocation_id
         }
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -66,6 +83,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         'scenario': str (optional)
     }
     """
+    # Generate unique invocation ID at the start to group all LLM calls in this Lambda invocation
+    invocation_id = str(uuid.uuid4())
+    logger.info(f"=== LAMBDA INVOCATION START ===")
+    logger.info(f"Invocation ID: {invocation_id}")
+    logger.info(f"Lambda request ID: {getattr(context, 'aws_request_id', 'unknown')}")
+    
     conv_id = None
     acc_id = None
     is_first = False
@@ -104,20 +127,28 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         result = generate_response_for_conversation(
             conv_id,
             acc_id,
+            invocation_id,
             is_first,
             scenario
         )
 
+        logger.info(f"=== LAMBDA INVOCATION END ===")
+        logger.info(f"Invocation ID: {invocation_id}")
+        logger.info(f"Result status: {result.get('status', 'unknown')}")
+        
         return {
             'statusCode': 200 if result['status'] == 'success' else 500,
             'body': json.dumps(result)
         }
     except Exception as e:
-        logger.error(f"Error in lambda handler: {str(e)}")
+        logger.error(f"Error in lambda handler for invocation {invocation_id}: {str(e)}")
+        logger.error(f"=== LAMBDA INVOCATION FAILED ===")
+        logger.error(f"Invocation ID: {invocation_id}")
         return {
             'statusCode': 500,
             'body': json.dumps({
                 'status': 'error',
-                'error': str(e)
+                'error': str(e),
+                'invocation_id': invocation_id
             })
         } 
