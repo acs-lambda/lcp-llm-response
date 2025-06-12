@@ -698,7 +698,7 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None, in
         # 1) First check with reviewer LLM if conversation needs review (only if no scenario is forced)
         if conversation_id and scenario is None:
             logger.info("No scenario provided - checking with reviewer LLM first...")
-            if check_with_reviewer_llm(emails, conversation_id, uid, invocation_id):  # Pass invocation_id to reviewer LLM
+            if check_with_reviewer_llm(emails, conversation_id, uid):  # Removed invocation_id parameter
                 # If flagged for review, return None to prevent email sending
                 logger.info(f"Conversation {conversation_id} flagged for review - no email will be sent")
                 return None
@@ -714,7 +714,7 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None, in
                 logger.info("Most recent email is outbound - using 'follow_up' scenario")
             else:
                 logger.info("No scenario provided - using selector LLM to determine scenario...")
-                scenario = select_scenario_with_llm(emails, conversation_id, uid, invocation_id)  # Pass invocation_id to selector LLM
+                scenario = select_scenario_with_llm(emails, conversation_id, uid)  # Pass invocation_id to selector LLM
                 logger.info(f"Selector LLM determined scenario: '{scenario}'")
         else:
             logger.info(f"Using provided scenario: '{scenario}'")
