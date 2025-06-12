@@ -2,6 +2,7 @@ import json
 import urllib3
 import boto3
 import logging
+import time
 from config import TAI_KEY, AWS_REGION
 from typing import Optional, Dict, Any, List
 from prompts import get_prompts, MODEL_MAPPING
@@ -36,8 +37,19 @@ class LLMResponder:
         self.scenario = scenario
         self.model_name = MODEL_MAPPING.get(scenario, "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8")
         
+        # Check if this scenario has a middleman prompt
+        self.has_middleman = "middleman" in self.prompt_config
+        self.middleman_prompt = self.prompt_config.get("middleman", "")
+        self.middleman_params = self.prompt_config.get("middleman_params", {})
+        self.middleman_model = MODEL_MAPPING.get(f"{scenario}_middleman", self.model_name)
+        
         logger.info(f"Prompt configuration for scenario '{scenario}':")
         logger.info(f"Model: {self.model_name}")
+        logger.info(f"Has middleman: {self.has_middleman}")
+        if self.has_middleman:
+            logger.info(f"Middleman model: {self.middleman_model}")
+            logger.info(f"Middleman params: {json.dumps(self.middleman_params, indent=2)}")
+            logger.info(f"Middleman prompt length: {len(self.middleman_prompt)} characters")
         logger.info(f"Hyperparameters: {json.dumps(self.hyperparameters, indent=2)}")
         logger.info(f"System prompt length: {len(self.system_prompt)} characters")
         logger.info(f"Using prompts with embedded preferences for account {account_id}")
@@ -56,6 +68,206 @@ class LLMResponder:
             
         logger.info(f"Formatted {len(messages)} total messages (including system prompt)")
         return messages
+
+    def call_middleman_llm(self, email_chain: List[Dict[str, Any]], conversation_id: Optional[str] = None) -> str:
+        """
+        Calls the middleman LLM to get strategic instructions for the email response.
+        Returns the middleman's instructions as a string.
+        """
+        if not self.has_middleman:
+            logger.error(f"No middleman prompt available for scenario '{self.scenario}'")
+            raise ValueError(f"Scenario '{self.scenario}' does not have a middleman prompt")
+        
+        logger.info(f"=== MIDDLEMAN LLM CALL START ===")
+        logger.info(f"Scenario: {self.scenario}")
+        logger.info(f"Conversation ID: {conversation_id}")
+        logger.info(f"Account ID: {self.account_id}")
+        logger.info(f"Email chain length: {len(email_chain)} messages")
+        
+        # Format conversation for middleman
+        messages = [
+            {"role": "system", "content": self.middleman_prompt}
+        ]
+        
+        for i, email in enumerate(email_chain):
+            email_content = f"Subject: {email.get('subject', '')}\n\nBody: {email.get('body', '')}"
+            role = "user" if email.get('type') == 'inbound-email' else "assistant"
+            logger.info(f"Middleman input - Email {i+1}: Role={role}, Subject='{email.get('subject', '')}', Body length={len(email.get('body', ''))} chars")
+            messages.append({"role": role, "content": email_content})
+        
+        logger.info(f"Middleman formatted {len(messages)} total messages (including system prompt)")
+        
+        # Prepare API payload for middleman
+        headers = {
+            "Authorization": f"Bearer {TAI_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": self.middleman_model,
+            "messages": messages,
+            **self.middleman_params,
+            "stop": ["<|im_end|>", "<|endoftext|>"],
+            "stream": False
+        }
+        
+        try:
+            logger.info(f"Calling middleman API with model: {self.middleman_model}")
+            logger.info(f"Middleman payload: {json.dumps(payload, indent=2)}")
+            
+            encoded_data = json.dumps(payload).encode('utf-8')
+            response = http.request(
+                'POST',
+                url,
+                body=encoded_data,
+                headers=headers
+            )
+            
+            logger.info(f"Middleman API response status: {response.status}")
+            if response.status != 200:
+                error_msg = response.data.decode('utf-8')
+                logger.error(f"Middleman API call failed with status {response.status}: {error_msg}")
+                raise Exception(f"Failed to fetch response from middleman LLM: {error_msg}")
+            
+            response_data = json.loads(response.data.decode('utf-8'))
+            logger.info("Middleman raw API response:")
+            logger.info(json.dumps(response_data, indent=2))
+            
+            if "choices" not in response_data:
+                logger.error(f"Invalid middleman API response format: {response_data}")
+                raise Exception("Invalid response format from middleman LLM")
+            
+            # Extract token usage
+            usage = response_data.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+            total_tokens = usage.get("total_tokens", 0)
+            
+            logger.info(f"Middleman token usage - Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
+            
+            # Store invocation record for middleman
+            if self.account_id:
+                logger.info("Storing middleman invocation record in DynamoDB")
+                invocation_success = store_llm_invocation(
+                    associated_account=self.account_id,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    llm_email_type=f"{self.scenario}_middleman",
+                    model_name=self.middleman_model,
+                    conversation_id=conversation_id
+                )
+                logger.info(f"Stored middleman invocation record: {'Success' if invocation_success else 'Failed'}")
+            
+            middleman_instructions = response_data["choices"][0]["message"]["content"]
+            logger.info(f"Middleman instructions generated successfully - length: {len(middleman_instructions)} characters")
+            logger.info(f"Middleman instructions preview: {middleman_instructions[:500]}...")
+            logger.info(f"=== MIDDLEMAN LLM CALL END ===")
+            
+            return middleman_instructions.replace('\\n', '\n')
+        except Exception as e:
+            logger.error(f"Error in middleman LLM call: {str(e)}", exc_info=True)
+            logger.error(f"=== MIDDLEMAN LLM CALL FAILED ===")
+            raise
+
+    def call_output_llm(self, email_chain: List[Dict[str, Any]], middleman_instructions: str, conversation_id: Optional[str] = None) -> str:
+        """
+        Calls the output LLM with the middleman's instructions to generate the final email.
+        Returns the final email response as a string.
+        """
+        logger.info(f"=== OUTPUT LLM CALL START ===")
+        logger.info(f"Scenario: {self.scenario}")
+        logger.info(f"Conversation ID: {conversation_id}")
+        logger.info(f"Account ID: {self.account_id}")
+        logger.info(f"Middleman instructions length: {len(middleman_instructions)} characters")
+        
+        # Format conversation for output LLM and include middleman instructions
+        messages = [
+            {"role": "system", "content": self.system_prompt}
+        ]
+        
+        # Add the email chain
+        for i, email in enumerate(email_chain):
+            email_content = f"Subject: {email.get('subject', '')}\n\nBody: {email.get('body', '')}"
+            role = "user" if email.get('type') == 'inbound-email' else "assistant"
+            logger.info(f"Output LLM input - Email {i+1}: Role={role}, Subject='{email.get('subject', '')}', Body length={len(email.get('body', ''))} chars")
+            messages.append({"role": role, "content": email_content})
+        
+        # Add the middleman instructions as the final user message
+        instruction_message = f"Based on the above conversation, follow these strategic instructions to write your response:\n\n{middleman_instructions}"
+        messages.append({"role": "user", "content": instruction_message})
+        
+        logger.info(f"Output LLM formatted {len(messages)} total messages (including system prompt and instructions)")
+        logger.info(f"Final instruction message preview: {instruction_message[:300]}...")
+        
+        # Prepare API payload for output LLM
+        headers = {
+            "Authorization": f"Bearer {TAI_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": self.model_name,
+            "messages": messages,
+            **self.hyperparameters,
+            "stop": ["<|im_end|>", "<|endoftext|>"],
+            "stream": False
+        }
+        
+        try:
+            logger.info(f"Calling output API with model: {self.model_name}")
+            logger.info(f"Output payload: {json.dumps(payload, indent=2)}")
+            
+            encoded_data = json.dumps(payload).encode('utf-8')
+            response = http.request(
+                'POST',
+                url,
+                body=encoded_data,
+                headers=headers
+            )
+            
+            logger.info(f"Output API response status: {response.status}")
+            if response.status != 200:
+                error_msg = response.data.decode('utf-8')
+                logger.error(f"Output API call failed with status {response.status}: {error_msg}")
+                raise Exception(f"Failed to fetch response from output LLM: {error_msg}")
+            
+            response_data = json.loads(response.data.decode('utf-8'))
+            logger.info("Output raw API response:")
+            logger.info(json.dumps(response_data, indent=2))
+            
+            if "choices" not in response_data:
+                logger.error(f"Invalid output API response format: {response_data}")
+                raise Exception("Invalid response format from output LLM")
+            
+            # Extract token usage
+            usage = response_data.get("usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+            total_tokens = usage.get("total_tokens", 0)
+            
+            logger.info(f"Output token usage - Input: {input_tokens}, Output: {output_tokens}, Total: {total_tokens}")
+            
+            # Store invocation record for output LLM
+            if self.account_id:
+                logger.info("Storing output invocation record in DynamoDB")
+                invocation_success = store_llm_invocation(
+                    associated_account=self.account_id,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    llm_email_type=self.scenario,
+                    model_name=self.model_name,
+                    conversation_id=conversation_id
+                )
+                logger.info(f"Stored output invocation record: {'Success' if invocation_success else 'Failed'}")
+            
+            final_email = response_data["choices"][0]["message"]["content"]
+            logger.info(f"Final email generated successfully - length: {len(final_email)} characters")
+            logger.info(f"Final email preview: {final_email[:300]}...")
+            logger.info(f"=== OUTPUT LLM CALL END ===")
+            
+            return final_email.replace('\\n', '\n')
+        except Exception as e:
+            logger.error(f"Error in output LLM call: {str(e)}", exc_info=True)
+            logger.error(f"=== OUTPUT LLM CALL FAILED ===")
+            raise
 
     def send(self, messages: List[Dict[str, str]], conversation_id: Optional[str] = None) -> str:
         headers = {
@@ -129,9 +341,121 @@ class LLMResponder:
             raise
 
     def generate_response(self, email_chain: List[Dict[str, Any]], conversation_id: Optional[str] = None) -> str:
-        logger.info(f"Generating response for conversation {conversation_id}")
-        messages = self.format_conversation(email_chain)
-        return self.send(messages, conversation_id)
+        """
+        Generates an email response using either the two-step middleman workflow or direct LLM call.
+        
+        Two-step workflow (for scenarios with middleman prompts):
+        1. Call middleman LLM to get strategic instructions
+        2. Call output LLM with those instructions to generate final email
+        
+        Direct workflow (for scenarios without middleman prompts):
+        1. Call LLM directly with conversation
+        """
+        logger.info(f"====== GENERATING RESPONSE START ======")
+        logger.info(f"Conversation ID: {conversation_id}")
+        logger.info(f"Scenario: {self.scenario}")
+        logger.info(f"Has middleman: {self.has_middleman}")
+        logger.info(f"Email chain length: {len(email_chain)} messages")
+        
+        workflow_start_time = time.time()
+        
+        try:
+            if self.has_middleman:
+                logger.info(f"Using TWO-STEP MIDDLEMAN WORKFLOW for scenario '{self.scenario}'")
+                
+                # Step 1: Call middleman LLM to get strategic instructions
+                step1_start_time = time.time()
+                logger.info("Step 1: Calling middleman LLM for strategic instructions...")
+                try:
+                    middleman_instructions = self.call_middleman_llm(email_chain, conversation_id)
+                    step1_end_time = time.time()
+                    step1_duration = step1_end_time - step1_start_time
+                    logger.info(f"Step 1: Middleman LLM call completed successfully in {step1_duration:.2f} seconds")
+                    
+                    # Validate middleman instructions
+                    if not middleman_instructions or not middleman_instructions.strip():
+                        logger.error("Step 1: Middleman returned empty or whitespace-only instructions")
+                        logger.error("Falling back to direct LLM call due to empty middleman response")
+                        return self._direct_llm_call(email_chain, conversation_id)
+                    
+                    if len(middleman_instructions.strip()) < 10:
+                        logger.error(f"Step 1: Middleman instructions too short ({len(middleman_instructions.strip())} chars), likely invalid")
+                        logger.error("Falling back to direct LLM call due to insufficient middleman instructions")
+                        return self._direct_llm_call(email_chain, conversation_id)
+                    
+                    logger.info(f"Step 1: Middleman instructions validated successfully ({len(middleman_instructions)} chars)")
+                    
+                except Exception as e:
+                    step1_end_time = time.time()
+                    step1_duration = step1_end_time - step1_start_time
+                    logger.error(f"Step 1: Middleman LLM call failed after {step1_duration:.2f} seconds: {str(e)}")
+                    logger.error("Falling back to direct LLM call due to middleman failure")
+                    # Fallback to direct call if middleman fails
+                    return self._direct_llm_call(email_chain, conversation_id)
+                
+                # Step 2: Call output LLM with middleman instructions
+                step2_start_time = time.time()
+                logger.info("Step 2: Calling output LLM with middleman instructions...")
+                try:
+                    final_response = self.call_output_llm(email_chain, middleman_instructions, conversation_id)
+                    step2_end_time = time.time()
+                    step2_duration = step2_end_time - step2_start_time
+                    total_duration = step2_end_time - workflow_start_time
+                    
+                    logger.info(f"Step 2: Output LLM call completed successfully in {step2_duration:.2f} seconds")
+                    logger.info(f"====== TWO-STEP WORKFLOW COMPLETED SUCCESSFULLY ======")
+                    logger.info(f"Workflow timing summary:")
+                    logger.info(f"  - Step 1 (Middleman): {step1_duration:.2f} seconds")
+                    logger.info(f"  - Step 2 (Output): {step2_duration:.2f} seconds")
+                    logger.info(f"  - Total workflow time: {total_duration:.2f} seconds")
+                    return final_response
+                except Exception as e:
+                    step2_end_time = time.time()
+                    step2_duration = step2_end_time - step2_start_time
+                    logger.error(f"Step 2: Output LLM call failed after {step2_duration:.2f} seconds: {str(e)}")
+                    logger.error("Falling back to direct LLM call due to output LLM failure")
+                    # Fallback to direct call if output LLM fails
+                    return self._direct_llm_call(email_chain, conversation_id)
+                    
+            else:
+                logger.info(f"Using DIRECT LLM WORKFLOW for scenario '{self.scenario}' (no middleman prompt)")
+                direct_response = self._direct_llm_call(email_chain, conversation_id)
+                direct_end_time = time.time()
+                direct_duration = direct_end_time - workflow_start_time
+                logger.info(f"====== DIRECT WORKFLOW COMPLETED SUCCESSFULLY ======")
+                logger.info(f"Direct workflow time: {direct_duration:.2f} seconds")
+                return direct_response
+                
+        except Exception as e:
+            workflow_end_time = time.time()
+            workflow_duration = workflow_end_time - workflow_start_time
+            logger.error(f"Critical error in generate_response after {workflow_duration:.2f} seconds: {str(e)}", exc_info=True)
+            logger.error(f"====== RESPONSE GENERATION FAILED ======")
+            raise
+
+    def _direct_llm_call(self, email_chain: List[Dict[str, Any]], conversation_id: Optional[str] = None) -> str:
+        """
+        Fallback method for direct LLM calls (original behavior).
+        Used when no middleman prompt exists or when middleman workflow fails.
+        """
+        logger.info(f"=== DIRECT LLM CALL START ===")
+        logger.info(f"Scenario: {self.scenario}")
+        logger.info(f"Conversation ID: {conversation_id}")
+        logger.info(f"Email chain length: {len(email_chain)} messages")
+        
+        try:
+            messages = self.format_conversation(email_chain)
+            logger.info("Formatted conversation for direct LLM call")
+            
+            response = self.send(messages, conversation_id)
+            logger.info("Direct LLM call completed successfully")
+            logger.info(f"=== DIRECT LLM CALL END ===")
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error in direct LLM call: {str(e)}", exc_info=True)
+            logger.error(f"=== DIRECT LLM CALL FAILED ===")
+            raise
 
 
 
@@ -352,20 +676,29 @@ def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id:
         logger.error(f"Defaulting to 'continuation_email' for conversation {conversation_id}")
         return "continuation_email"
 
-def generate_email_response(emails, uid, conversation_id=None, scenario=None):
+def generate_email_response(emails, uid, conversation_id=None, scenario=None, invocation_id=None):
     """
     Generates a follow-up email response based on the provided email chain and scenario.
     If scenario is None, uses the reviewer LLM first, then the selector LLM to determine the scenario.
+    
+    Args:
+        emails: List of email messages in the conversation
+        uid: User/account ID
+        conversation_id: Optional conversation ID
+        scenario: Optional scenario override
+        invocation_id: Optional Lambda invocation ID for grouping LLM calls
     """
     try:
         logger.info(f"Starting email generation for conversation_id: {conversation_id}, uid: {uid}")
         logger.info(f"Initial scenario provided: {scenario}")
         logger.info(f"Email chain length: {len(emails)} messages")
+        if invocation_id:
+            logger.info(f"Invocation ID: {invocation_id}")
         
         # 1) First check with reviewer LLM if conversation needs review (only if no scenario is forced)
         if conversation_id and scenario is None:
             logger.info("No scenario provided - checking with reviewer LLM first...")
-            if check_with_reviewer_llm(emails, conversation_id, uid):  # Pass uid to reviewer LLM
+            if check_with_reviewer_llm(emails, conversation_id, uid, invocation_id):  # Pass invocation_id to reviewer LLM
                 # If flagged for review, return None to prevent email sending
                 logger.info(f"Conversation {conversation_id} flagged for review - no email will be sent")
                 return None
@@ -381,20 +714,44 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None):
                 logger.info("Most recent email is outbound - using 'follow_up' scenario")
             else:
                 logger.info("No scenario provided - using selector LLM to determine scenario...")
-                scenario = select_scenario_with_llm(emails, conversation_id, uid)  # Pass uid to selector LLM
+                scenario = select_scenario_with_llm(emails, conversation_id, uid, invocation_id)  # Pass invocation_id to selector LLM
                 logger.info(f"Selector LLM determined scenario: '{scenario}'")
         else:
             logger.info(f"Using provided scenario: '{scenario}'")
   
         # 3) Generate response using the determined scenario
         logger.info(f"Creating LLMResponder for scenario: '{scenario}'")
-        responder = LLMResponder(scenario, uid)  # Pass uid to get user preferences
+        logger.info(f"====== EMAIL GENERATION WORKFLOW STARTING ======")
+        logger.info(f"Final workflow parameters:")
+        logger.info(f"  - Conversation ID: {conversation_id}")
+        logger.info(f"  - Account ID (uid): {uid}")
+        logger.info(f"  - Scenario: {scenario}")
+        logger.info(f"  - Email chain length: {len(emails)}")
         
-        logger.info(f"Generating email response using '{scenario}' scenario...")
-        response = responder.generate_response(emails, conversation_id)
-        logger.info(f"Successfully generated response for scenario '{scenario}' - length: {len(response)}")
-        
-        return response
+        try:
+            responder = LLMResponder(scenario, uid)  # Pass uid to get user preferences
+            logger.info(f"LLMResponder created successfully for scenario '{scenario}'")
+            logger.info(f"Responder has middleman: {responder.has_middleman}")
+            
+            logger.info(f"Starting response generation using '{scenario}' scenario...")
+            response = responder.generate_response(emails, conversation_id)
+            
+            # Validate response
+            if not response or not response.strip():
+                logger.error(f"Generated response is empty or whitespace-only for scenario '{scenario}'")
+                raise ValueError(f"Empty response generated for scenario '{scenario}'")
+            
+            logger.info(f"Successfully generated response for scenario '{scenario}':")
+            logger.info(f"  - Response length: {len(response)} characters")
+            logger.info(f"  - Response preview: {response[:200]}...")
+            logger.info(f"====== EMAIL GENERATION WORKFLOW COMPLETED SUCCESSFULLY ======")
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error in email generation workflow: {str(e)}", exc_info=True)
+            logger.error(f"====== EMAIL GENERATION WORKFLOW FAILED ======")
+            raise
     except Exception as e:
         logger.error(f"Error generating email response: {str(e)}", exc_info=True)  # Added stack trace
         raise
