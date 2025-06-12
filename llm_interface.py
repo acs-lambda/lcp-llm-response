@@ -179,9 +179,10 @@ class LLMResponder:
         logger.info(f"Account ID: {self.account_id}")
         logger.info(f"Middleman instructions length: {len(middleman_instructions)} characters")
         
-        # Format conversation for output LLM and include middleman instructions
+        # Format conversation for output LLM with middleman instructions in system message
+        combined_system_prompt = f"{self.system_prompt}\n\nStrategic Instructions:\n{middleman_instructions}"
         messages = [
-            {"role": "system", "content": self.system_prompt}
+            {"role": "system", "content": combined_system_prompt}
         ]
         
         # Add the email chain
@@ -191,12 +192,8 @@ class LLMResponder:
             logger.info(f"Output LLM input - Email {i+1}: Role={role}, Subject='{email.get('subject', '')}', Body length={len(email.get('body', ''))} chars")
             messages.append({"role": role, "content": email_content})
         
-        # Add the middleman instructions as the final user message
-        instruction_message = f"Based on the above conversation, follow these strategic instructions to write your response:\n\n{middleman_instructions}"
-        messages.append({"role": "user", "content": instruction_message})
-        
-        logger.info(f"Output LLM formatted {len(messages)} total messages (including system prompt and instructions)")
-        logger.info(f"Final instruction message preview: {instruction_message[:300]}...")
+        logger.info(f"Output LLM formatted {len(messages)} total messages (including system prompt with instructions)")
+        logger.info(f"Combined system prompt preview: {combined_system_prompt[:300]}...")
         
         # Prepare API payload for output LLM
         headers = {
