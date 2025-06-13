@@ -4,9 +4,9 @@ import boto3
 import logging
 import time
 from config import TAI_KEY, AWS_REGION
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from prompts import get_prompts, MODEL_MAPPING
-from db import store_llm_invocation
+from db import store_llm_invocation, check_rate_limit, update_invocation_count
 
 # Set up logging
 logger = logging.getLogger()
@@ -16,6 +16,25 @@ logger.setLevel(logging.INFO)
 http = urllib3.PoolManager()
 
 url = "https://api.together.xyz/v1/chat/completions"
+
+def check_ai_rate_limit(account_id: str) -> Tuple[bool, Optional[str]]:
+    """
+    Check AI rate limit and update if allowed.
+    Returns (is_allowed, error_message)
+    """
+    if not account_id:
+        return True, None  # Skip rate limiting for non-account calls
+        
+    # Check AI rate limit
+    is_allowed, error_msg = check_rate_limit('RL_AI', account_id, 'ai')
+    if not is_allowed:
+        return False, error_msg
+        
+    # Update AI invocation count
+    if not update_invocation_count('RL_AI', account_id):
+        return False, "Failed to update AI invocation count"
+        
+    return True, None
 
 class LLMResponder:
     def __init__(self, scenario: str, account_id: Optional[str]):
@@ -77,6 +96,12 @@ class LLMResponder:
         if not self.has_middleman:
             logger.error(f"No middleman prompt available for scenario '{self.scenario}'")
             raise ValueError(f"Scenario '{self.scenario}' does not have a middleman prompt")
+        
+        # Check AI rate limit before proceeding
+        is_allowed, error_msg = check_ai_rate_limit(self.account_id)
+        if not is_allowed:
+            logger.warning(f"AI rate limit exceeded for account {self.account_id}: {error_msg}")
+            raise Exception(error_msg)
         
         logger.info(f"=== MIDDLEMAN LLM CALL START ===")
         logger.info(f"Scenario: {self.scenario}")
@@ -173,6 +198,12 @@ class LLMResponder:
         Calls the output LLM with the middleman's instructions to generate the final email.
         Returns the final email response as a string.
         """
+        # Check AI rate limit before proceeding
+        is_allowed, error_msg = check_ai_rate_limit(self.account_id)
+        if not is_allowed:
+            logger.warning(f"AI rate limit exceeded for account {self.account_id}: {error_msg}")
+            raise Exception(error_msg)
+            
         logger.info(f"=== OUTPUT LLM CALL START ===")
         logger.info(f"Scenario: {self.scenario}")
         logger.info(f"Conversation ID: {conversation_id}")
@@ -432,9 +463,15 @@ class LLMResponder:
 
     def _direct_llm_call(self, email_chain: List[Dict[str, Any]], conversation_id: Optional[str] = None) -> str:
         """
-        Fallback method for direct LLM calls (original behavior).
-        Used when no middleman prompt exists or when middleman workflow fails.
+        Makes a direct LLM call without using middleman.
+        Used for scenarios that don't require middleman processing.
         """
+        # Check AI rate limit before proceeding
+        is_allowed, error_msg = check_ai_rate_limit(self.account_id)
+        if not is_allowed:
+            logger.warning(f"AI rate limit exceeded for account {self.account_id}: {error_msg}")
+            raise Exception(error_msg)
+            
         logger.info(f"=== DIRECT LLM CALL START ===")
         logger.info(f"Scenario: {self.scenario}")
         logger.info(f"Conversation ID: {conversation_id}")

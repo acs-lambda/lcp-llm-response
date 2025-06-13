@@ -2,10 +2,10 @@ import json
 import boto3
 import logging
 import uuid
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple, Optional
 
 from llm_interface import generate_email_response, format_conversation_for_llm
-from db import get_email_chain
+from db import get_email_chain, check_rate_limit, update_invocation_count
 
 # Set up logging
 logger = logging.getLogger()
@@ -72,6 +72,22 @@ def generate_response_for_conversation(conversation_id: str, account_id: str, in
             'invocation_id': invocation_id
         }
 
+def check_and_update_rate_limits(account_id: str) -> Tuple[bool, Optional[str]]:
+    """
+    Check AWS rate limit and update if allowed.
+    Returns (is_allowed, error_message)
+    """
+    # Check AWS rate limit
+    is_allowed, error_msg = check_rate_limit('RL_AWS', account_id, 'aws')
+    if not is_allowed:
+        return False, error_msg
+        
+    # Update AWS invocation count
+    if not update_invocation_count('RL_AWS', account_id):
+        return False, "Failed to update AWS invocation count"
+        
+    return True, None
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     Lambda handler for LLM response generation.
@@ -122,6 +138,19 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     is_first = event['is_first_email']
                 if 'scenario' in event:
                     scenario = event['scenario']
+
+        # Check AWS rate limit before proceeding
+        is_allowed, error_msg = check_and_update_rate_limits(acc_id)
+        if not is_allowed:
+            logger.warning(f"Rate limit exceeded for account {acc_id}: {error_msg}")
+            return {
+                'statusCode': 429,
+                'body': json.dumps({
+                    'status': 'error',
+                    'error': error_msg,
+                    'invocation_id': invocation_id
+                })
+            }
 
         # Generate response
         result = generate_response_for_conversation(
