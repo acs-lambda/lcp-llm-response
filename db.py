@@ -648,14 +648,14 @@ def update_invocation_count(table_name: str, account_id: str) -> bool:
             return True
         except dynamodb.meta.client.exceptions.ResourceNotFoundException:
             # If record doesn't exist, create new one with TTL
-            current_time_ms = int(time.time() * 1000)
-            ttl_time_ms = current_time_ms + (60 * 1000)  # 1 minute from now in milliseconds
+            current_time_s = int(time.time())
+            ttl_time_s = current_time_s + 60  # 1 minute from now in seconds
             
             table.put_item(
                 Item={
                     'associated_account': account_id,
                     'invocations': 1,
-                    'ttl': ttl_time_ms
+                    'ttl': ttl_time_s
                 }
             )
             return True
