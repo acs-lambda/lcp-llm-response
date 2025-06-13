@@ -592,4 +592,96 @@ def test_middleman_storage_example():
         'middleman_example': middleman_example,
         'output_example': output_example,
         'total_workflow_tokens': total_tokens
-    } 
+    }
+
+def get_user_rate_limits(account_id: str) -> Dict[str, int]:
+    """Get user's rate limits from Users table."""
+    result = invoke_db_select(
+        table_name='Users',
+        index_name="id-index",
+        key_name='id',
+        key_value=account_id
+    )
+    
+    if isinstance(result, list) and result:
+        user = result[0]
+        return {
+            'rl_aws': user.get('rl_aws', 0),
+            'rl_ai': user.get('rl_ai', 0)
+        }
+    return {'rl_aws': 0, 'rl_ai': 0}
+
+def get_current_invocations(table_name: str, account_id: str) -> int:
+    """Get current invocation count for an account from rate limit table."""
+    result = invoke_db_select(
+        table_name=table_name,
+        index_name='associated_account-index',
+        key_name='associated_account',
+        key_value=account_id
+    )
+    
+    if isinstance(result, list) and result:
+        return result[0].get('invocations', 0)
+    return 0
+
+def update_invocation_count(table_name: str, account_id: str) -> bool:
+    """
+    Update invocation count in rate limit table.
+    Uses DynamoDB update expression to atomically increment the counter.
+    If record doesn't exist, creates new one with TTL set to 1 minute from now.
+    """
+    try:
+        dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
+        table = dynamodb.Table(table_name)
+        
+        # Try to update existing record
+        try:
+            response = table.update_item(
+                Key={'associated_account': account_id},
+                UpdateExpression='SET invocations = if_not_exists(invocations, :zero) + :inc',
+                ExpressionAttributeValues={
+                    ':inc': 1,
+                    ':zero': 0
+                },
+                ReturnValues='UPDATED_NEW'
+            )
+            return True
+        except dynamodb.meta.client.exceptions.ResourceNotFoundException:
+            # If record doesn't exist, create new one with TTL
+            current_time_ms = int(time.time() * 1000)
+            ttl_time_ms = current_time_ms + (60 * 1000)  # 1 minute from now in milliseconds
+            
+            table.put_item(
+                Item={
+                    'associated_account': account_id,
+                    'invocations': 1,
+                    'ttl': ttl_time_ms
+                }
+            )
+            return True
+            
+    except Exception as e:
+        logger.error(f"Error updating invocation count in {table_name}: {str(e)}")
+        return False
+
+def check_rate_limit(table_name: str, account_id: str, limit_type: str) -> tuple[bool, Optional[str]]:
+    """
+    Check if account has exceeded rate limit.
+    Returns (is_allowed, error_message)
+    """
+    try:
+        # Get user's rate limits
+        limits = get_user_rate_limits(account_id)
+        limit = limits.get(f'rl_{limit_type}', 0)
+        
+        # Get current invocation count
+        current = get_current_invocations(table_name, account_id)
+        
+        if current >= limit:
+            return False, f"Rate limit exceeded for {limit_type} invocations"
+            
+        return True, None
+        
+    except Exception as e:
+        logger.error(f"Error checking rate limit: {str(e)}")
+        return False, f"Error checking rate limit: {str(e)}" 
