@@ -454,7 +454,7 @@ CONTINUE for typical conversations like:
 
 Remember: The goal is identifying when the REALTOR'S specific expertise is needed, not content safety.""",
             "hyperparameters": {
-                "max_tokens": 1,
+                "max_tokens": 5,
                 "temperature": 0.0,
                 "top_p": 1.0,
                 "top_k": 1,
