@@ -469,6 +469,3 @@ Remember: The goal is identifying when the REALTOR'S specific expertise is neede
             }
         }
     }
-
-# Backwards compatibility - provide the original PROMPTS variable for scenarios that don't need preferences
-PROMPTS = get_prompts()
