@@ -6,7 +6,7 @@ import time
 from config import TAI_KEY, AWS_REGION
 from typing import Optional, Dict, Any, List, Tuple
 from prompts import get_prompts, MODEL_MAPPING
-from db import store_llm_invocation, check_rate_limit, update_invocation_count
+from db import store_llm_invocation
 
 # Set up logging
 logger = logging.getLogger()
