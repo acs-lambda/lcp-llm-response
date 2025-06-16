@@ -155,6 +155,18 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 if 'session_id' in event:
                     session_id = event['session_id']
 
+        # Check for required fields before DB calls
+        if not acc_id or not session_id:
+            logger.error(f"Missing required fields for DB call: account_id={acc_id}, session_id={session_id}")
+            return {
+                'statusCode': 400,
+                'body': json.dumps({
+                    'status': 'error',
+                    'error': 'Missing required fields: account_id and session_id',
+                    'invocation_id': invocation_id
+                })
+            }
+
         # Check authorization and rate limits if not using AUTH_BP
         if session_id != AUTH_BP:
             authorize(acc_id, session_id)

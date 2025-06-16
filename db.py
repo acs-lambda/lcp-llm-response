@@ -18,6 +18,7 @@ def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, 
     Returns a list of items or None if the invocation failed.
     """
     try:
+        logger.info(f"Invoking db-select with: table_name={table_name}, index_name={index_name}, key_name={key_name}, key_value={key_value}, account_id={account_id}, session_id={session_id}")
         payload = {
             'table_name': table_name,
             'index_name': index_name,
