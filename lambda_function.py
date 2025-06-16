@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from llm_interface import generate_email_response, format_conversation_for_llm
 from db import get_email_chain, check_rate_limit, update_invocation_count
 from config import logger
-from utils import authorize, AuthorizationError
+from utils import authorize, AuthorizationError, parse_event
 
 # Set up logging
 logger = logging.getLogger()
@@ -116,44 +116,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     logger.info(f"Invocation ID: {invocation_id}")
     logger.info(f"Lambda request ID: {getattr(context, 'aws_request_id', 'unknown')}")
     
-    conv_id = None
-    acc_id = None
-    is_first = False
-    scenario = None
-    session_id = None
     try:
-        # Validate input
-        required_fields = ['conversation_id', 'account_id']
-        for field in required_fields:
-            if field not in event:
-                if 'body' in event:
-                    # convert string to dict
-                    event['body'] = json.loads(event['body'])
-                    if 'conversation_id' not in event['body']:
-                        raise ValueError("Missing required field: conversation_id")
-                    if 'account_id' not in event['body']:
-                        raise ValueError("Missing required field: account_id")
-                    if 'is_first_email' in event['body']:
-                        is_first = event['body']['is_first_email']
-                    if 'scenario' in event['body']:
-                        scenario = event['body']['scenario']
-                    if 'session_id' in event['body']:
-                        session_id = event['body']['session_id']
-                    # parse conv_id and acc_id
-                    conv_id = event['body']['conversation_id']
-                    acc_id = event['body']['account_id']
-                    break
-                else:
-                    raise ValueError("Missing required field: conversation_id or account_id")
-            else:
-                conv_id = event['conversation_id']
-                acc_id = event['account_id']
-                if 'is_first_email' in event:
-                    is_first = event['is_first_email']
-                if 'scenario' in event:
-                    scenario = event['scenario']
-                if 'session_id' in event:
-                    session_id = event['session_id']
+        # Use robust event parsing
+        parsed_event = parse_event(event)
+        # Extract fields from parsed_event
+        conv_id = parsed_event.get('conversation_id')
+        acc_id = parsed_event.get('account_id')
+        is_first = parsed_event.get('is_first_email', False)
+        scenario = parsed_event.get('scenario')
+        session_id = parsed_event.get('session_id')
 
         # Check for required fields before DB calls
         if not acc_id or not session_id:
