@@ -88,6 +88,8 @@ class LLMResponder:
         logger.info(f"Prompt configuration for scenario '{scenario}':")
         logger.info(f"Model: {self.model_name}")
         logger.info(f"Has middleman: {self.has_middleman}")
+        logger.info(f"Account ID: {account_id}")
+        logger.info(f"Session ID: {session_id}")
         if self.has_middleman:
             logger.info(f"Middleman model: {self.middleman_model}")
             logger.info(f"Middleman params: {json.dumps(self.middleman_params, indent=2)}")
@@ -640,7 +642,7 @@ def update_thread_flag_review_override(conversation_id: str, flag_value: str) ->
         logger.error(f"Error updating flag_review_override: {str(e)}")
         return False
 
-def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: str, account_id: Optional[str] = None, session_id: str = None) -> bool:
+def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: str, account_id, session_id) -> bool:
     """
     Uses the reviewer_llm to determine if a conversation needs human review.
     Returns True if the conversation should be flagged for review, False otherwise.
@@ -692,7 +694,7 @@ def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: 
             logger.error(f"Failed to update flag_for_review for conversation {conversation_id}")
         return True
 
-def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id: str, account_id: Optional[str] = None, session_id: str = None) -> str:
+def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id: str, account_id, session_id) -> str:
     """
     Uses the selector_llm prompt to classify the email chain and return a scenario keyword.
     """
@@ -733,7 +735,7 @@ def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id:
         logger.error(f"Defaulting to 'continuation_email' for conversation {conversation_id}")
         return "continuation_email"
 
-def generate_email_response(emails, uid, conversation_id=None, scenario=None, invocation_id=None, session_id: str = None):
+def generate_email_response(emails, uid, conversation_id, scenario, invocation_id, session_id):
     """
     Generates a follow-up email response based on the provided email chain and scenario.
     If scenario is None, uses the reviewer LLM first, then the selector LLM to determine the scenario.
