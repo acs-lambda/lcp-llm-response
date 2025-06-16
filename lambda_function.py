@@ -2,15 +2,24 @@ import json
 import boto3
 import logging
 import uuid
+import os
 from typing import Dict, Any, List, Tuple, Optional
 
 from llm_interface import generate_email_response, format_conversation_for_llm
 from db import get_email_chain, check_rate_limit, update_invocation_count
-from config import logger, AUTH_BP
+from config import logger
+from utils import authorize, AuthorizationError
 
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+# Get AUTH_BP from config if available, otherwise from environment
+try:
+    from config import AUTH_BP
+except ImportError:
+    AUTH_BP = os.environ.get("AUTH_BP", "")
+    logger.warning("AUTH_BP not found in config, using environment variable")
 
 def generate_response_for_conversation(conversation_id: str, account_id: str, invocation_id: str, is_first_email: bool = False, scenario: str = None) -> Dict[str, Any]:
     """
