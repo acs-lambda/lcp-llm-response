@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Tuple, Optional
 
 from llm_interface import generate_email_response, format_conversation_for_llm
 from db import get_email_chain, check_rate_limit, update_invocation_count
+from config import logger, AUTH_BP
 
 # Set up logging
 logger = logging.getLogger()
