@@ -52,7 +52,7 @@ def generate_response_for_conversation(conversation_id: str, account_id: str, se
             chain = [chain[0]]
 
         # Generate response with invocation_id for tracking
-        response = generate_email_response(chain, account_id, conversation_id, scenario, invocation_id)
+        response = generate_email_response(chain, account_id, conversation_id, scenario, invocation_id, session_id)
         logger.info(f"Generated response for conversation {conversation_id} using scenario '{scenario}' (invocation: {invocation_id})")
 
         # If response is None, it means the conversation was flagged for review

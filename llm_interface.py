@@ -37,11 +37,11 @@ def check_ai_rate_limit(account_id: str) -> Tuple[bool, Optional[str]]:
     return True, None
 
 class LLMResponder:
-    def __init__(self, scenario: str, account_id: Optional[str]):
+    def __init__(self, scenario: str, account_id: str, session_id: str):
         original_scenario = scenario
         
         # Get prompts with embedded preferences for this account
-        prompts = get_prompts(account_id)
+        prompts = get_prompts(account_id, session_id)
         
         if scenario not in prompts:
             # Default to continuation_email if unknown scenario
@@ -617,7 +617,7 @@ def update_thread_flag_review_override(conversation_id: str, flag_value: str) ->
         logger.error(f"Error updating flag_review_override: {str(e)}")
         return False
 
-def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: str, account_id: Optional[str] = None) -> bool:
+def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: str, account_id: Optional[str] = None, session_id: str = None) -> bool:
     """
     Uses the reviewer_llm to determine if a conversation needs human review.
     Returns True if the conversation should be flagged for review, False otherwise.
@@ -640,7 +640,7 @@ def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: 
     
     # Create a reviewer LLM instance with account_id if provided
     logger.info("Creating reviewer LLM instance")
-    reviewer = LLMResponder("reviewer_llm", account_id)  # Pass account_id to track invocations
+    reviewer = LLMResponder("reviewer_llm", account_id, session_id)
     messages = reviewer.format_conversation(email_chain)
     
     try:
@@ -669,7 +669,7 @@ def check_with_reviewer_llm(email_chain: List[Dict[str, Any]], conversation_id: 
             logger.error(f"Failed to update flag_for_review for conversation {conversation_id}")
         return True
 
-def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id: str, account_id: Optional[str] = None) -> str:
+def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id: str, account_id: Optional[str] = None, session_id: str = None) -> str:
     """
     Uses the selector_llm prompt to classify the email chain and return a scenario keyword.
     """
@@ -679,7 +679,7 @@ def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id:
     
     # Create a special LLMResponder instance with account_id if provided
     logger.info("Creating selector LLM instance")
-    selector = LLMResponder("selector_llm", account_id)  # Pass account_id to track invocations
+    selector = LLMResponder("selector_llm", account_id, session_id)
     messages = selector.format_conversation(email_chain)
     
     try:
@@ -710,7 +710,7 @@ def select_scenario_with_llm(email_chain: List[Dict[str, Any]], conversation_id:
         logger.error(f"Defaulting to 'continuation_email' for conversation {conversation_id}")
         return "continuation_email"
 
-def generate_email_response(emails, uid, conversation_id=None, scenario=None, invocation_id=None):
+def generate_email_response(emails, uid, conversation_id=None, scenario=None, invocation_id=None, session_id: str = None):
     """
     Generates a follow-up email response based on the provided email chain and scenario.
     If scenario is None, uses the reviewer LLM first, then the selector LLM to determine the scenario.
@@ -732,7 +732,7 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None, in
         # 1) First check with reviewer LLM if conversation needs review (only if no scenario is forced)
         if conversation_id and scenario is None:
             logger.info("No scenario provided - checking with reviewer LLM first...")
-            if check_with_reviewer_llm(emails, conversation_id, uid):  # Removed invocation_id parameter
+            if check_with_reviewer_llm(emails, conversation_id, uid, session_id):
                 # If flagged for review, return None to prevent email sending
                 logger.info(f"Conversation {conversation_id} flagged for review - no email will be sent")
                 return None
@@ -748,7 +748,7 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None, in
                 logger.info("Most recent email is outbound - using 'follow_up' scenario")
             else:
                 logger.info("No scenario provided - using selector LLM to determine scenario...")
-                scenario = select_scenario_with_llm(emails, conversation_id, uid)  # Pass invocation_id to selector LLM
+                scenario = select_scenario_with_llm(emails, conversation_id, uid, session_id)
                 logger.info(f"Selector LLM determined scenario: '{scenario}'")
         else:
             logger.info(f"Using provided scenario: '{scenario}'")
@@ -763,7 +763,7 @@ def generate_email_response(emails, uid, conversation_id=None, scenario=None, in
         logger.info(f"  - Email chain length: {len(emails)}")
         
         try:
-            responder = LLMResponder(scenario, uid)  # Pass uid to get user preferences
+            responder = LLMResponder(scenario, uid, session_id)  # Pass uid to get user preferences
             logger.info(f"LLMResponder created successfully for scenario '{scenario}'")
             logger.info(f"Responder has middleman: {responder.has_middleman}")
             

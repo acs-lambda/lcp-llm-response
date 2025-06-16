@@ -175,7 +175,7 @@ def construct_realtor_bio(location_data: Dict[str, str]) -> str:
 
 
 
-def get_prompts(account_id: Optional[str] = None, session_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+def get_prompts(account_id: str, session_id: str) -> Dict[str, Dict[str, Any]]:
     """
     Get the prompts dictionary with user preferences and realtor bio embedded directly into the system prompts.
     For scenarios that don't use preferences (selector_llm, reviewer_llm), account_id and session_id are ignored.
