@@ -10,17 +10,17 @@ logger.setLevel(logging.INFO)
 # Model mapping for each LLM type - easily change models here
 MODEL_MAPPING = {
     "summarizer": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-    "intro_email": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", 
-    "continuation_email": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
-    "follow_up": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
+    "intro_email": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8", 
+    "continuation_email": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+    "follow_up": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
     "closing_referral": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
     "selector_llm": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",  # Fast classification task
     "reviewer_llm": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",   # Fast review task
     # Middleman LLMs for content strategy
     "summarizer_middleman": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-    "intro_email_middleman": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
-    "continuation_email_middleman": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", 
-    "follow_up_middleman": "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
+    "intro_email_middleman": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+    "continuation_email_middleman": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8", 
+    "follow_up_middleman": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
     "closing_referral_middleman": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
 }
 
