@@ -1,15 +1,13 @@
 import json
 import boto3
 import logging
-import uuid
 import os
-import time
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional
 
-from llm_interface import generate_email_response, format_conversation_for_llm
-from db import get_email_chain, check_rate_limit, update_invocation_count
+from llm_interface import generate_email_response
+from db import get_email_chain
 from config import logger, AWS_REGION, AWS_RATE_LIMIT_LAMBDA, AI_RATE_LIMIT_LAMBDA, AUTH_BP
-from utils import authorize, AuthorizationError, parse_event
+from utils import authorize, parse_event
 
 # Set up logging
 logger = logging.getLogger()
