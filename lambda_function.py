@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Dict, Any, Tuple, Optional
 
-from llm_interface import generate_email_response
+from llm_interface import generate_email_response, invoke_rate_limit
 from db import get_email_chain
 from config import logger, AWS_REGION, AWS_RATE_LIMIT_LAMBDA, AI_RATE_LIMIT_LAMBDA, AUTH_BP
 from utils import authorize, parse_event
@@ -83,36 +83,6 @@ def generate_response_for_conversation(conversation_id: str, account_id: str, se
         }
 
 
-def invoke_rate_limit(lambda_name: str, account_id: str, session_id: str) -> Tuple[bool, Optional[str]]:
-    """
-    Invoke a rate limit Lambda function.
-    Returns (is_allowed, error_message)
-    """
-    try:
-        lambda_client = boto3.client('lambda', region_name=AWS_REGION)
-        
-        payload = {
-            'account_id': account_id,
-            'session_id': session_id
-        }
-        
-        response = lambda_client.invoke(
-            FunctionName=lambda_name,
-            InvocationType='RequestResponse',
-            Payload=json.dumps(payload)
-        )
-        
-        response_payload = json.loads(response['Payload'].read())
-        if response_payload['statusCode'] != 200:
-            logger.error(f"Rate limit Lambda failed: {response_payload}")
-            return False, response_payload.get('body', 'Rate limit check failed')
-            
-        result = json.loads(response_payload['body'])
-        return result.get('is_allowed', False), result.get('error_message')
-        
-    except Exception as e:
-        logger.error(f"Error invoking rate limit Lambda: {str(e)}")
-        return False, str(e)
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """

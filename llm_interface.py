@@ -7,7 +7,6 @@ from config import TAI_KEY, AWS_REGION, AI_RATE_LIMIT_LAMBDA
 from typing import Optional, Dict, Any, List, Tuple
 from prompts import get_prompts, MODEL_MAPPING
 from db import store_llm_invocation
-from lambda_function import invoke_rate_limit
 
 # Set up logging
 logger = logging.getLogger()
@@ -17,6 +16,39 @@ logger.setLevel(logging.INFO)
 http = urllib3.PoolManager()
 
 url = "https://api.together.xyz/v1/chat/completions"
+
+
+def invoke_rate_limit(lambda_name: str, account_id: str, session_id: str) -> Tuple[bool, Optional[str]]:
+    """
+    Invoke a rate limit Lambda function.
+    Returns (is_allowed, error_message)
+    """
+    try:
+        lambda_client = boto3.client('lambda', region_name=AWS_REGION)
+        
+        payload = {
+            'account_id': account_id,
+            'session_id': session_id
+        }
+        
+        response = lambda_client.invoke(
+            FunctionName=lambda_name,
+            InvocationType='RequestResponse',
+            Payload=json.dumps(payload)
+        )
+        
+        response_payload = json.loads(response['Payload'].read())
+        if response_payload['statusCode'] != 200:
+            logger.error(f"Rate limit Lambda failed: {response_payload}")
+            return False, response_payload.get('body', 'Rate limit check failed')
+            
+        result = json.loads(response_payload['body'])
+        return result.get('is_allowed', False), result.get('error_message')
+        
+    except Exception as e:
+        logger.error(f"Error invoking rate limit Lambda: {str(e)}")
+        return False, str(e)
+
 
 def check_ai_rate_limit(account_id: str, session_id: str) -> Tuple[bool, Optional[str]]:
     """
