@@ -44,7 +44,9 @@ def invoke_rate_limit(lambda_name: str, account_id: str, session_id: str) -> Tup
             
         result = json.loads(response_payload['body'])
         logger.info(f"Rate limit Lambda result: {result}")
-        return result.get('statusCode') == 200, result.get('error_message')
+        logger.info("Response payload:")
+        logger.info(response_payload)
+        return response_payload['statusCode'] == 200, result.get('error_message')
         
     except Exception as e:
         logger.error(f"Error invoking rate limit Lambda: {str(e)}")
