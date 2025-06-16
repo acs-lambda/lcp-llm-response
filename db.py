@@ -12,7 +12,7 @@ logger.setLevel(logging.INFO)
 
 lambda_client = boto3.client('lambda', region_name=AWS_REGION)
 
-def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, key_value: Any) -> Optional[List[Dict[str, Any]]]:
+def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, key_value: Any, account_id: str, session_id: str) -> Optional[List[Dict[str, Any]]]:
     """
     Generic function to invoke the db-select Lambda for read operations only.
     Returns a list of items or None if the invocation failed.
@@ -22,7 +22,9 @@ def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, 
             'table_name': table_name,
             'index_name': index_name,
             'key_name': key_name,
-            'key_value': key_value
+            'key_value': key_value,
+            'account_id': account_id,
+            'session_id': session_id
         }
         
         response = lambda_client.invoke(
@@ -43,7 +45,7 @@ def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, 
         logger.error(f"Error invoking database Lambda: {str(e)}")
         return None
 
-def get_conversation_id(message_id: str) -> Optional[str]:
+def get_conversation_id(message_id: str, account_id: str, session_id: str) -> Optional[str]:
     """Get conversation ID by message ID."""
     if not message_id:
         return None
@@ -52,7 +54,9 @@ def get_conversation_id(message_id: str) -> Optional[str]:
         table_name='Conversations',
         index_name='response_id-index',
         key_name='response_id',
-        key_value=message_id
+        key_value=message_id,
+        account_id=account_id,
+        session_id=session_id
     )
     
     # Handle list response
@@ -60,13 +64,15 @@ def get_conversation_id(message_id: str) -> Optional[str]:
         return result[0].get('conversation_id')
     return None
 
-def get_associated_account(email: str) -> Optional[str]:
+def get_associated_account(email: str, account_id: str, session_id: str) -> Optional[str]:
     """Get account ID by email."""
     result = invoke_db_select(
         table_name='Users',
         index_name='responseEmail-index',
         key_name='responseEmail',
-        key_value=email.lower()
+        key_value=email.lower(),
+        account_id=account_id,
+        session_id=session_id
     )
     
     # Handle list response
@@ -74,13 +80,15 @@ def get_associated_account(email: str) -> Optional[str]:
         return result[0].get('id')
     return None
 
-def get_email_chain(conversation_id: str) -> List[Dict[str, Any]]:
+def get_email_chain(conversation_id: str, account_id: str, session_id: str) -> List[Dict[str, Any]]:
     """Get email chain for a conversation."""
     result = invoke_db_select(
         table_name='Conversations',
         index_name='conversation_id-index',
         key_name='conversation_id',
-        key_value=conversation_id
+        key_value=conversation_id,
+        account_id=account_id,
+        session_id=session_id
     )
     
     # Handle list response directly
@@ -98,13 +106,15 @@ def get_email_chain(conversation_id: str) -> List[Dict[str, Any]]:
         'type': item.get('type', '')
     } for item in sorted_items]
 
-def get_account_email(account_id: str) -> Optional[str]:
+def get_account_email(account_id: str, session_id: str) -> Optional[str]:
     """Get account email by account ID."""
     result = invoke_db_select(
         table_name='Users',
         index_name="id-index",
         key_name='id',
-        key_value=account_id
+        key_value=account_id,
+        account_id=account_id,
+        session_id=session_id
     )
     
     # Handle list response
@@ -112,13 +122,15 @@ def get_account_email(account_id: str) -> Optional[str]:
         return result[0].get('responseEmail')
     return None
 
-def get_user_preferences(account_id: str) -> Dict[str, str]:
+def get_user_preferences(account_id: str, session_id: str) -> Dict[str, str]:
     """Get user's LLM preferences (tone, style, sample prompt) by account ID."""
     result = invoke_db_select(
         table_name='Users',
         index_name="id-index",
         key_name='id',
-        key_value=account_id
+        key_value=account_id,
+        account_id=account_id,
+        session_id=session_id
     )
     
     # Handle list response
@@ -600,7 +612,9 @@ def get_user_rate_limits(account_id: str) -> Dict[str, int]:
         table_name='Users',
         index_name="id-index",
         key_name='id',
-        key_value=account_id
+        key_value=account_id,
+        account_id=account_id,
+        session_id=account_id
     )
     
     if isinstance(result, list) and result:
@@ -617,7 +631,9 @@ def get_current_invocations(table_name: str, account_id: str) -> int:
         table_name=table_name,
         index_name='associated_account-index',
         key_name='associated_account',
-        key_value=account_id
+        key_value=account_id,
+        account_id=account_id,
+        session_id=account_id
     )
     
     if isinstance(result, list) and result:

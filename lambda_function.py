@@ -21,7 +21,7 @@ except ImportError:
     AUTH_BP = os.environ.get("AUTH_BP", "")
     logger.warning("AUTH_BP not found in config, using environment variable")
 
-def generate_response_for_conversation(conversation_id: str, account_id: str, invocation_id: str, is_first_email: bool = False, scenario: str = None) -> Dict[str, Any]:
+def generate_response_for_conversation(conversation_id: str, account_id: str, session_id: str, invocation_id: str, is_first_email: bool = False, scenario: str = None) -> Dict[str, Any]:
     """
     Generates an LLM response for a conversation.
     Returns the generated response and status.
@@ -29,6 +29,7 @@ def generate_response_for_conversation(conversation_id: str, account_id: str, in
     Args:
         conversation_id: The conversation ID
         account_id: The account ID  
+        session_id: The session ID
         invocation_id: Unique ID for this Lambda invocation (groups all LLM calls)
         is_first_email: Whether this is the first email in a chain
         scenario: Optional scenario override
@@ -41,7 +42,7 @@ def generate_response_for_conversation(conversation_id: str, account_id: str, in
         logger.info(f"  - Scenario: {scenario}")
         
         # Get the email chain
-        chain = get_email_chain(conversation_id)
+        chain = get_email_chain(conversation_id, account_id, session_id)
         
         if not chain:
             raise ValueError("Could not get email chain")
@@ -174,6 +175,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         result = generate_response_for_conversation(
             conv_id,
             acc_id,
+            session_id,
             invocation_id,
             is_first,
             scenario
