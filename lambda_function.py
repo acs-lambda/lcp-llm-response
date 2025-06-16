@@ -109,6 +109,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     acc_id = None
     is_first = False
     scenario = None
+    session_id = None
     try:
         # Validate input
         required_fields = ['conversation_id', 'account_id']
@@ -125,6 +126,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         is_first = event['body']['is_first_email']
                     if 'scenario' in event['body']:
                         scenario = event['body']['scenario']
+                    if 'session_id' in event['body']:
+                        session_id = event['body']['session_id']
                     # parse conv_id and acc_id
                     conv_id = event['body']['conversation_id']
                     acc_id = event['body']['account_id']
@@ -138,20 +141,25 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     is_first = event['is_first_email']
                 if 'scenario' in event:
                     scenario = event['scenario']
+                if 'session_id' in event:
+                    session_id = event['session_id']
 
-        # Check AWS rate limit before proceeding
-        is_allowed, error_msg = check_and_update_rate_limits(acc_id)
-        if not is_allowed:
-            logger.warning(f"Rate limit exceeded for account {acc_id}: {error_msg}")
-            return {
-                'statusCode': 429,
-                'body': json.dumps({
-                    'status': 'error',
-                    'error': error_msg,
-                    'invocation_id': invocation_id
-                })
-            }
-
+        # Check authorization and rate limits if not using AUTH_BP
+        if session_id != AUTH_BP:
+            authorize(acc_id, session_id)
+            # Check AWS rate limit before proceeding
+            is_allowed, error_msg = check_and_update_rate_limits(acc_id)
+            if not is_allowed:
+                logger.warning(f"Rate limit exceeded for account {acc_id}: {error_msg}")
+                return {
+                    'statusCode': 429,
+                    'body': json.dumps({
+                        'status': 'error',
+                        'error': error_msg,
+                        'invocation_id': invocation_id
+                    })
+                }
+        
         # Generate response
         result = generate_response_for_conversation(
             conv_id,
