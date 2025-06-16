@@ -24,7 +24,7 @@ MODEL_MAPPING = {
 }
 
 # Import the db functionality for getting user preferences
-def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, key_value: Any) -> Optional[list]:
+def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, key_value: Any, session_id: str) -> Optional[list]:
     """
     Generic function to invoke the db-select Lambda for read operations only.
     Returns a list of items or None if the invocation failed.
@@ -39,7 +39,8 @@ def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, 
             'table_name': table_name,
             'index_name': index_name,
             'key_name': key_name,
-            'key_value': key_value
+            'key_value': key_value,
+            'session_id': session_id
         }
         
         response = lambda_client.invoke(
@@ -60,7 +61,7 @@ def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, 
         logger.error(f"Error invoking database Lambda: {str(e)}")
         return None
 
-def get_user_tone(account_id: str) -> str:
+def get_user_tone(account_id: str, session_id: str) -> str:
     """Get user's tone preference by account ID."""
     if not account_id:
         return 'NULL'
@@ -69,7 +70,8 @@ def get_user_tone(account_id: str) -> str:
         table_name='Users',
         index_name="id-index",
         key_name='id',
-        key_value=account_id
+        key_value=account_id,
+        session_id=session_id
     )
     
     if isinstance(result, list) and result:
@@ -77,7 +79,7 @@ def get_user_tone(account_id: str) -> str:
         return tone if tone != 'NULL' else 'NULL'
     return 'NULL'
 
-def get_user_style(account_id: str) -> str:
+def get_user_style(account_id: str, session_id: str) -> str:
     """Get user's writing style preference by account ID."""
     if not account_id:
         return 'NULL'
@@ -86,7 +88,8 @@ def get_user_style(account_id: str) -> str:
         table_name='Users',
         index_name="id-index",
         key_name='id',
-        key_value=account_id
+        key_value=account_id,
+        session_id=session_id
     )
     
     if isinstance(result, list) and result:
@@ -94,7 +97,7 @@ def get_user_style(account_id: str) -> str:
         return style if style != 'NULL' else 'NULL'
     return 'NULL'
 
-def get_user_sample_prompt(account_id: str) -> str:
+def get_user_sample_prompt(account_id: str, session_id: str) -> str:
     """Get user's sample prompt preference by account ID."""
     if not account_id:
         return 'NULL'
@@ -103,7 +106,8 @@ def get_user_sample_prompt(account_id: str) -> str:
         table_name='Users',
         index_name="id-index",
         key_name='id',
-        key_value=account_id
+        key_value=account_id,
+        session_id=session_id
     )
     
     if isinstance(result, list) and result:
@@ -111,7 +115,7 @@ def get_user_sample_prompt(account_id: str) -> str:
         return sample if sample != 'NULL' else 'NULL'
     return 'NULL'
 
-def get_user_location_data(account_id: str) -> Dict[str, str]:
+def get_user_location_data(account_id: str, session_id: str) -> Dict[str, str]:
     """Get user's location data by account ID."""
     if not account_id:
         return {}
@@ -120,7 +124,8 @@ def get_user_location_data(account_id: str) -> Dict[str, str]:
         table_name='Users',
         index_name="id-index",
         key_name='id',
-        key_value=account_id
+        key_value=account_id,
+        session_id=session_id
     )
     
     if isinstance(result, list) and result:
@@ -170,10 +175,10 @@ def construct_realtor_bio(location_data: Dict[str, str]) -> str:
 
 
 
-def get_prompts(account_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+def get_prompts(account_id: Optional[str] = None, session_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
     """
     Get the prompts dictionary with user preferences and realtor bio embedded directly into the system prompts.
-    For scenarios that don't use preferences (selector_llm, reviewer_llm), account_id is ignored.
+    For scenarios that don't use preferences (selector_llm, reviewer_llm), account_id and session_id are ignored.
     """
     
     # Get user preferences and bio if account_id provided
@@ -182,22 +187,24 @@ def get_prompts(account_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
     sample_instruction = ""
     realtor_bio = ""
     
-    if account_id and account_id not in ['selector_llm', 'reviewer_llm']:
-        user_tone = get_user_tone(account_id)
-        user_style = get_user_style(account_id)
-        user_sample = get_user_sample_prompt(account_id)
-        location_data = get_user_location_data(account_id)
-        
-        if user_tone != 'NULL':
-            tone = f" in a {user_tone} tone"
-        
-        if user_style != 'NULL':
-            style = f" using a {user_style} writing style"
-        
-        if user_sample != 'NULL':
-            sample_instruction = f" that closely matches the style and tone of this writing sample: {user_sample}"
-        
-        realtor_bio = construct_realtor_bio(location_data)
+    if not account_id or not session_id:
+        raise ValueError("Account ID and session ID are required prompts.py")
+    
+    user_tone = get_user_tone(account_id, session_id)
+    user_style = get_user_style(account_id, session_id)
+    user_sample = get_user_sample_prompt(account_id, session_id)
+    location_data = get_user_location_data(account_id, session_id)
+    
+    if user_tone != 'NULL':
+        tone = f" in a {user_tone} tone"
+    
+    if user_style != 'NULL':
+        style = f" using a {user_style} writing style"
+    
+    if user_sample != 'NULL':
+        sample_instruction = f" that closely matches the style and tone of this writing sample: {user_sample}"
+    
+    realtor_bio = construct_realtor_bio(location_data)
     
     return {
         "summarizer": {
