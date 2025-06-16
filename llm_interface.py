@@ -3,10 +3,11 @@ import urllib3
 import boto3
 import logging
 import time
-from config import TAI_KEY, AWS_REGION
+from config import TAI_KEY, AWS_REGION, AI_RATE_LIMIT_LAMBDA
 from typing import Optional, Dict, Any, List, Tuple
 from prompts import get_prompts, MODEL_MAPPING
 from db import store_llm_invocation
+from lambda_function import invoke_rate_limit
 
 # Set up logging
 logger = logging.getLogger()
@@ -17,24 +18,13 @@ http = urllib3.PoolManager()
 
 url = "https://api.together.xyz/v1/chat/completions"
 
-def check_ai_rate_limit(account_id: str) -> Tuple[bool, Optional[str]]:
+def check_ai_rate_limit(account_id: str, session_id: str) -> Tuple[bool, Optional[str]]:
     """
-    Check AI rate limit and update if allowed.
+    Check AI rate limit by invoking RateLimitAI Lambda.
     Returns (is_allowed, error_message)
     """
-    if not account_id:
-        return True, None  # Skip rate limiting for non-account calls
         
-    # Check AI rate limit
-    is_allowed, error_msg = check_rate_limit('RL_AI', account_id, 'ai')
-    if not is_allowed:
-        return False, error_msg
-        
-    # Update AI invocation count
-    if not update_invocation_count('RL_AI', account_id):
-        return False, "Failed to update AI invocation count"
-        
-    return True, None
+    return invoke_rate_limit(AI_RATE_LIMIT_LAMBDA, account_id, session_id)
 
 class LLMResponder:
     def __init__(self, scenario: str, account_id: str, session_id: str):
@@ -54,6 +44,7 @@ class LLMResponder:
         self.system_prompt = self.prompt_config["system"]
         self.account_id = account_id
         self.scenario = scenario
+        self.session_id = session_id  # Store session_id as instance variable
         self.model_name = MODEL_MAPPING.get(scenario, "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8")
         
         # Check if this scenario has a middleman prompt
@@ -98,7 +89,7 @@ class LLMResponder:
             raise ValueError(f"Scenario '{self.scenario}' does not have a middleman prompt")
         
         # Check AI rate limit before proceeding
-        is_allowed, error_msg = check_ai_rate_limit(self.account_id)
+        is_allowed, error_msg = check_ai_rate_limit(self.account_id, self.session_id)
         if not is_allowed:
             logger.warning(f"AI rate limit exceeded for account {self.account_id}: {error_msg}")
             raise Exception(error_msg)
@@ -199,7 +190,7 @@ class LLMResponder:
         Returns the final email response as a string.
         """
         # Check AI rate limit before proceeding
-        is_allowed, error_msg = check_ai_rate_limit(self.account_id)
+        is_allowed, error_msg = check_ai_rate_limit(self.account_id, self.session_id)
         if not is_allowed:
             logger.warning(f"AI rate limit exceeded for account {self.account_id}: {error_msg}")
             raise Exception(error_msg)
@@ -467,7 +458,7 @@ class LLMResponder:
         Used for scenarios that don't require middleman processing.
         """
         # Check AI rate limit before proceeding
-        is_allowed, error_msg = check_ai_rate_limit(self.account_id)
+        is_allowed, error_msg = check_ai_rate_limit(self.account_id, self.session_id)
         if not is_allowed:
             logger.warning(f"AI rate limit exceeded for account {self.account_id}: {error_msg}")
             raise Exception(error_msg)
