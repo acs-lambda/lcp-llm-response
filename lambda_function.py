@@ -3,11 +3,12 @@ import boto3
 import logging
 import uuid
 import os
+import time
 from typing import Dict, Any, List, Tuple, Optional
 
 from llm_interface import generate_email_response, format_conversation_for_llm
 from db import get_email_chain, check_rate_limit, update_invocation_count
-from config import logger
+from config import logger, AWS_REGION, AWS_RATE_LIMIT_LAMBDA, AI_RATE_LIMIT_LAMBDA, AUTH_BP
 from utils import authorize, AuthorizationError, parse_event
 
 # Set up logging
@@ -83,46 +84,49 @@ def generate_response_for_conversation(conversation_id: str, account_id: str, se
             'invocation_id': invocation_id
         }
 
-def check_and_update_rate_limits(account_id: str) -> Tuple[bool, Optional[str]]:
+
+def invoke_rate_limit(lambda_name: str, account_id: str, session_id: str) -> Tuple[bool, Optional[str]]:
     """
-    Check AWS rate limit and update if allowed.
+    Invoke a rate limit Lambda function.
     Returns (is_allowed, error_message)
     """
-    # Check AWS rate limit
-    is_allowed, error_msg = check_rate_limit('RL_AWS', account_id, 'aws')
-    if not is_allowed:
-        return False, error_msg
+    try:
+        lambda_client = boto3.client('lambda', region_name=AWS_REGION)
         
-    # Update AWS invocation count
-    if not update_invocation_count('RL_AWS', account_id):
-        return False, "Failed to update AWS invocation count"
+        payload = {
+            'account_id': account_id,
+            'session_id': session_id
+        }
         
-    return True, None
+        response = lambda_client.invoke(
+            FunctionName=lambda_name,
+            InvocationType='RequestResponse',
+            Payload=json.dumps(payload)
+        )
+        
+        response_payload = json.loads(response['Payload'].read())
+        if response_payload['statusCode'] != 200:
+            logger.error(f"Rate limit Lambda failed: {response_payload}")
+            return False, response_payload.get('body', 'Rate limit check failed')
+            
+        result = json.loads(response_payload['body'])
+        return result.get('is_allowed', False), result.get('error_message')
+        
+    except Exception as e:
+        logger.error(f"Error invoking rate limit Lambda: {str(e)}")
+        return False, str(e)
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
-    Lambda handler for LLM response generation.
-    Expected event format:
-    {
-        'conversation_id': str,
-        'account_id': str,
-        'is_first_email': bool (optional),
-        'scenario': str (optional)
-    }
+    Main Lambda handler for processing email responses.
     """
-    # Generate unique invocation ID at the start to group all LLM calls in this Lambda invocation
-    invocation_id = str(uuid.uuid4())
-    logger.info(f"=== LAMBDA INVOCATION START ===")
-    logger.info(f"Invocation ID: {invocation_id}")
-    logger.info(f"Lambda request ID: {getattr(context, 'aws_request_id', 'unknown')}")
-    
     try:
         # Use robust event parsing
         parsed_event = parse_event(event)
         # Extract fields from parsed_event
-        conv_id = parsed_event.get('conversation_id')
+        conversation_id = parsed_event.get('conversation_id')
         acc_id = parsed_event.get('account_id')
-        is_first = parsed_event.get('is_first_email', False)
+        is_first_email = parsed_event.get('is_first_email', False)
         scenario = parsed_event.get('scenario')
         session_id = parsed_event.get('session_id')
 
@@ -134,53 +138,87 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({
                     'status': 'error',
                     'error': 'Missing required fields: account_id and session_id',
-                    'invocation_id': invocation_id
                 })
             }
-
-        # Check authorization and rate limits if not using AUTH_BP
+            
+        # Skip auth and rate limits for admin bypass
         if session_id != AUTH_BP:
             authorize(acc_id, session_id)
-            # Check AWS rate limit before proceeding
-            is_allowed, error_msg = check_and_update_rate_limits(acc_id)
-            if not is_allowed:
-                logger.warning(f"Rate limit exceeded for account {acc_id}: {error_msg}")
+            
+            # Check both AWS and AI rate limits via Lambda invocations
+            is_aws_allowed, aws_error = invoke_rate_limit(AWS_RATE_LIMIT_LAMBDA, acc_id, session_id)
+            if not is_aws_allowed:
+                logger.warning(f"AWS rate limit exceeded for account {acc_id}: {aws_error}")
                 return {
                     'statusCode': 429,
                     'body': json.dumps({
                         'status': 'error',
-                        'error': error_msg,
-                        'invocation_id': invocation_id
+                        'error': aws_error,
+                    })
+                }
+                
+            is_ai_allowed, ai_error = invoke_rate_limit(AI_RATE_LIMIT_LAMBDA, acc_id, session_id)
+            if not is_ai_allowed:
+                logger.warning(f"AI rate limit exceeded for account {acc_id}: {ai_error}")
+                return {
+                    'statusCode': 429,
+                    'body': json.dumps({
+                        'status': 'error',
+                        'error': ai_error,
                     })
                 }
         
-        # Generate response
-        result = generate_response_for_conversation(
-            conv_id,
-            acc_id,
-            session_id,
-            invocation_id,
-            is_first,
-            scenario
-        )
+        # Generate email response
+        try:
+            # Get the email chain
+            chain = get_email_chain(conversation_id, acc_id, session_id)
 
-        logger.info(f"=== LAMBDA INVOCATION END ===")
-        logger.info(f"Invocation ID: {invocation_id}")
-        logger.info(f"Result status: {result.get('status', 'unknown')}")
-        
-        return {
-            'statusCode': 200 if result['status'] == 'success' else 500,
-            'body': json.dumps(result)
-        }
+            response = generate_email_response(
+                emails=chain,
+                uid=acc_id,
+                conversation_id=conversation_id,
+                scenario=scenario,
+                invocation_id="null",
+                session_id=session_id
+            )
+            
+            if response is None:
+                return {
+                    'statusCode': 200,
+                    'body': json.dumps({
+                        'status': 'flagged',
+                        'message': 'Conversation flagged for review',
+                        'invocation_id': "null"
+                    })
+                }
+            
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'status': 'success',
+                    'response': response,
+                    'invocation_id': "null"
+                })
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating email response: {str(e)}", exc_info=True)
+            return {
+                'statusCode': 500,
+                'body': json.dumps({
+                    'status': 'error',
+                    'error': str(e),
+                    'invocation_id': "null"
+                })
+            }
+            
     except Exception as e:
-        logger.error(f"Error in lambda handler for invocation {invocation_id}: {str(e)}")
-        logger.error(f"=== LAMBDA INVOCATION FAILED ===")
-        logger.error(f"Invocation ID: {invocation_id}")
+        logger.error(f"Error in lambda handler: {str(e)}", exc_info=True)
         return {
             'statusCode': 500,
             'body': json.dumps({
                 'status': 'error',
                 'error': str(e),
-                'invocation_id': invocation_id
+                'invocation_id': context.aws_request_id if context else None
             })
         } 

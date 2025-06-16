@@ -2,6 +2,7 @@ import boto3
 import logging
 from typing import Dict, Any, Optional
 from config import AWS_REGION
+from db import invoke_db_select
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -23,43 +24,6 @@ MODEL_MAPPING = {
     "closing_referral_middleman": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
 }
 
-# Import the db functionality for getting user preferences
-def invoke_db_select(table_name: str, index_name: Optional[str], key_name: str, key_value: Any, session_id: str) -> Optional[list]:
-    """
-    Generic function to invoke the db-select Lambda for read operations only.
-    Returns a list of items or None if the invocation failed.
-    """
-    try:
-        import json
-        from config import DB_SELECT_LAMBDA
-        
-        lambda_client = boto3.client('lambda', region_name=AWS_REGION)
-        
-        payload = {
-            'table_name': table_name,
-            'index_name': index_name,
-            'key_name': key_name,
-            'key_value': key_value,
-            'session_id': session_id
-        }
-        
-        response = lambda_client.invoke(
-            FunctionName=DB_SELECT_LAMBDA,
-            InvocationType='RequestResponse',
-            Payload=json.dumps(payload)
-        )
-        
-        response_payload = json.loads(response['Payload'].read())
-        if response_payload['statusCode'] != 200:
-            logger.error(f"Database Lambda failed: {response_payload}")
-            return None
-            
-        result = json.loads(response_payload['body'])
-        logger.info(f"Database Lambda response: {result}")
-        return result if isinstance(result, list) else None
-    except Exception as e:
-        logger.error(f"Error invoking database Lambda: {str(e)}")
-        return None
 
 def get_user_tone(account_id: str, session_id: str) -> str:
     """Get user's tone preference by account ID."""
@@ -71,6 +35,7 @@ def get_user_tone(account_id: str, session_id: str) -> str:
         index_name="id-index",
         key_name='id',
         key_value=account_id,
+        account_id=account_id,
         session_id=session_id
     )
     
@@ -89,6 +54,7 @@ def get_user_style(account_id: str, session_id: str) -> str:
         index_name="id-index",
         key_name='id',
         key_value=account_id,
+        account_id=account_id,
         session_id=session_id
     )
     
@@ -107,6 +73,7 @@ def get_user_sample_prompt(account_id: str, session_id: str) -> str:
         index_name="id-index",
         key_name='id',
         key_value=account_id,
+        account_id=account_id,
         session_id=session_id
     )
     
@@ -125,6 +92,7 @@ def get_user_location_data(account_id: str, session_id: str) -> Dict[str, str]:
         index_name="id-index",
         key_name='id',
         key_value=account_id,
+        account_id=account_id,
         session_id=session_id
     )
     
