@@ -291,8 +291,11 @@ Focus on progressing the conversation and gathering more qualifying information.
 
 The instructions will specify what to reference from previous communications, what value to provide, and how to re-engage. Write naturally and conversationally based on these instructions.
 
-Do NOT be overly persistent or pushy. Maintain a helpful, professional tone that shows you're available when they're ready.
-Do NOT include email signatures, formal closings, or sign-offs like "Best regards," "Sincerely," or "[Your Name]". Do include some intro like "Hi [Name],".""",
+CRITICAL REQUIREMENTS:
+– Output ONLY the email body content
+– Do NOT be overly persistent or pushy. Maintain a helpful, professional tone that shows you're available when they're ready.
+– Do NOT include email signatures, formal closings, or sign-offs like "Best regards," "Sincerely," or "[Your Name]". Do include some intro like "Hi [Name],"
+– Do NOT add any commentary, explanations, or meta-text about the email""",
 
             "hyperparameters": {
                 "max_tokens": 120,
