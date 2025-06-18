@@ -299,7 +299,7 @@ CRITICAL REQUIREMENTS:
 
             "hyperparameters": {
                 "max_tokens": 120,
-                "temperature": 0.3,
+                "temperature": 0.15,
                 "top_p": 0.8,
                 "top_k": 50,
                 "repetition_penalty": 1.0
