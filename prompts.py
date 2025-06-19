@@ -178,7 +178,7 @@ def get_prompts(account_id: str, session_id: str) -> Dict[str, Dict[str, Any]]:
         "summarizer": {
             "system": f"You are writing a summary email based on strategic instructions. {realtor_bio}Follow the provided instructions exactly to create a summary{tone}{style}{sample_instruction}.\n\nThe instructions will specify what key points to include. Do NOT add, infer, or invent any details beyond what's specified. Output only the summary content—no headers, no extra commentary.",
             "hyperparameters": {
-                "max_tokens": 256,
+                "max_tokens": 150,
                 "temperature": 0.3,
                 "top_p": 1.0,
                 "top_k": 0,
@@ -204,8 +204,8 @@ IMPORTANT GUIDELINES:
 - Do NOT include email signatures, formal closings, or sign-offs like "Best regards," "Sincerely," or "[Your Name]".""",
 
             "hyperparameters": {
-                "max_tokens": 150,  # Increased from 100 to 200 to allow for complete responses
-                "temperature": 0.3,
+                "max_tokens": 200,  # Increased from 100 to 200 to allow for complete responses
+                "temperature": 0.2,
                 "top_p": 0.8,
                 "top_k": 50,
                 "repetition_penalty": 1.0
@@ -249,8 +249,8 @@ Do NOT invent specific properties, market data, or services not mentioned in the
 Do NOT include email signatures, formal closings, or sign-offs like "Best regards," "Sincerely," or "[Your Name]". Do include some intro like "Hey, [Name],".""",
 
             "hyperparameters": {
-                "max_tokens": 150,
-                "temperature": 0.3,
+                "max_tokens": 200,
+                "temperature": 0.2,
                 "top_p": 0.8,
                 "top_k": 50,
                 "repetition_penalty": 1.0
@@ -298,8 +298,8 @@ CRITICAL REQUIREMENTS:
 – Do NOT add any commentary, explanations, or meta-text about the email""",
 
             "hyperparameters": {
-                "max_tokens": 120,
-                "temperature": 0.15,
+                "max_tokens": 200,
+                "temperature": 0.2,
                 "top_p": 0.8,
                 "top_k": 50,
                 "repetition_penalty": 1.0
