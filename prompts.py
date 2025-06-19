@@ -422,6 +422,8 @@ BUSINESS LOGIC FLAGS:
 11. Complex property conditions, inspections, or repair negotiations
 12. Investment property analysis or rental/commercial discussions
 
+Additionally, respond with FLAG if there are any tangibles that the AI is not able to properly answer (meeting times, showing times, etc.)
+
 CONTINUE for typical conversations like:
 - Initial inquiries about buying/selling homes
 - Basic qualification questions (budget, timeline, preferences)
